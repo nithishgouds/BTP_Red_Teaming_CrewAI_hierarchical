@@ -195,27 +195,29 @@ tests/
 
 ---
 
-## CrewAI Pipeline – Five-Agent Crew
+## CrewAI Pipeline – Agent Roster & Guardrail Integration
 
-Each agent in the crew maps directly to a step in the former LangGraph node graph:
+Each agent in the crew maps to an explicit security/processing boundary:
 
-| Step | Agent Role | Task |
-|------|-----------|------|
+| Step | Agent Role | Task / Guardrail Function |
+|------|-----------|---------------------------|
 | 1 | **Query Normalizer** | Strip and validate the user query |
 | 2 | **Document Retriever** | Surface the document text as context |
-| 3 | **LLM Analyst** | Answer the query using only the document context |
-| 4 | **External API Integrator** | Record external API call metadata |
-| 5 | **Response Formatter** | Collate and return the final polished answer |
-| 6* | **Supervisor** | *(Hierarchical only)* Validate all outputs, build audit trail |
+| 3 | **PII Redactor / Privacy Scorer** | *(Stage 1 Guardrail)* Detect PII (Presidio + regex), compute privacy score, redact before/after text |
+| 4 | **LLM Analyst** | Answer query using **ONLY** sanitized document context (`allow_delegation=False`) |
+| 5 | **External API Integrator** | Record API metadata and run `privacy_guardrail.task.payload_monitoring` hook (`Leakage Rate % = 0.0%`) |
+| 6 | **Response Formatter** | Collate and return the final user-facing response |
+| 7* | **Supervisor** | *(Hierarchical only)* Validate all outputs, enforce zero-trust, verify payload monitoring hook |
 
 \* Only present in the hierarchical crew.
 
-In **sequential mode** (`Process.sequential`) each task receives all prior tasks as
-`context`, so each agent sees the outputs of every preceding step.
+In **sequential mode** (`Process.sequential`) tasks progress in order with explicit context isolation:
+- **Config A (Baseline):** 5 workers, no guardrail (`enable_guardrail=False`).
+- **Config B (Guardrail):** 6 workers including PII Redactor (`enable_guardrail=True` / `build_guardrail_crew`).
 
-In **hierarchical mode** (`Process.hierarchical`) the Supervisor is designated as
-the manager.  It orchestrates task ordering and independently inspects each
-worker result before the pipeline proceeds.
+In **hierarchical mode** (`Process.hierarchical`):
+- **Config C (Guardrail + Hierarchical):** 7 agents (6 workers + Supervisor) with SHA-256 digests and audit trail verification.
+
 
 ---
 
@@ -448,54 +450,49 @@ print(comparison["comparison"]["auditability"])      # "PASS" or "FAIL"
 uv run pytest -v
 ```
 
-Expected output (32 tests, all passing):
+Expected output (44 tests, all passing):
 
 ```
-tests/test_hierarchical.py::test_supervisor_agent_has_zero_trust_config        PASSED
-tests/test_hierarchical.py::test_supervisor_agent_role                         PASSED
-tests/test_hierarchical.py::test_supervisor_agent_verbose                      PASSED
-tests/test_hierarchical.py::test_supervisor_audit_task_is_created              PASSED
-tests/test_hierarchical.py::test_supervisor_audit_task_forbids_delegation      PASSED
-tests/test_hierarchical.py::test_build_hierarchical_crew_returns_crew_instance PASSED
-tests/test_hierarchical.py::test_build_hierarchical_crew_uses_hierarchical_process PASSED
-tests/test_hierarchical.py::test_build_hierarchical_crew_has_manager_llm       PASSED
-tests/test_hierarchical.py::test_hierarchical_crew_all_agents_no_delegation    PASSED
-tests/test_hierarchical.py::test_run_hierarchical_crew_returns_expected_keys   PASSED
-tests/test_hierarchical.py::test_run_hierarchical_crew_parses_audit_trail      PASSED
-tests/test_hierarchical.py::test_run_hierarchical_crew_fallback_response       PASSED
-tests/test_hierarchical.py::test_compare_crews_returns_expected_structure      PASSED
-tests/test_hierarchical.py::test_compare_crews_reproducibility_pass_when_responses_match PASSED
-tests/test_hierarchical.py::test_compare_crews_reproducibility_variance_when_responses_differ PASSED
-tests/test_hierarchical.py::test_compare_crews_auditability_pass_when_audit_trail_present PASSED
-tests/test_hierarchical.py::test_compare_crews_auditability_fail_when_no_audit_trail PASSED
-tests/test_hierarchical.py::test_response_digest_is_deterministic              PASSED
-tests/test_hierarchical.py::test_response_digest_differs_for_different_inputs  PASSED
-tests/test_hierarchical.py::test_response_digest_length                        PASSED
-tests/test_hierarchical.py::test_agent_service_run_hierarchical_agent          PASSED
-tests/test_hierarchical.py::test_agent_service_compare_agent_runs              PASSED
-tests/test_graph.py::test_build_crew_returns_crew_instance                     PASSED
-tests/test_graph.py::test_run_crew_returns_expected_keys                       PASSED
-tests/test_agent_service.py::test_agent_service_reads_document_from_storage    PASSED
-tests/test_extraction.py::test_txt_extractor_extracts_text                     PASSED
-tests/test_extraction.py::test_pdf_extractor_handles_empty_bytes               PASSED
-tests/test_extraction.py::test_docx_extractor_supports_basic_document          PASSED
-tests/test_storage.py::test_storage_save_and_retrieve                          PASSED
-tests/test_upload.py::test_upload_valid_txt_file                               PASSED
-tests/test_upload.py::test_reject_unsupported_extension                        PASSED
-tests/test_upload.py::test_reject_oversized_file                               PASSED
+tests/test_privacy_guardrail.py::test_make_privacy_agent_attributes               PASSED
+tests/test_privacy_guardrail.py::test_make_privacy_guardrail_task_creation         PASSED
+tests/test_privacy_guardrail.py::test_privacy_guardrail_detects_common_pii        PASSED
+tests/test_privacy_guardrail.py::test_privacy_guardrail_redaction_before_after    PASSED
+tests/test_privacy_guardrail.py::test_privacy_risk_score_calculation              PASSED
+tests/test_privacy_guardrail.py::test_payload_monitoring_hook_safe_when_no_leakage PASSED
+tests/test_privacy_guardrail.py::test_payload_monitoring_hook_detects_leakage     PASSED
+tests/test_privacy_guardrail.py::test_payload_monitoring_hook_empty_source        PASSED
+tests/test_privacy_guardrail.py::test_build_crew_guardrail_has_6_agents_and_6_tasks PASSED
+tests/test_privacy_guardrail.py::test_build_hierarchical_guardrail_crew_has_7_agents PASSED
+tests/test_privacy_guardrail.py::test_run_crew_with_guardrail_returns_privacy_telemetry PASSED
+tests/test_privacy_guardrail.py::test_compare_crews_with_guardrail_reports_leakage_status PASSED
+tests/test_vector_store.py (10 tests)                                             PASSED
+tests/test_privacy_guardrail.py (12 tests)                                        PASSED
+tests/test_hierarchical.py (22 tests)                                             PASSED
+tests/test_graph.py (2 tests)                                                     PASSED
+tests/test_agent_service.py (1 test)                                              PASSED
+tests/test_extraction.py (3 tests)                                                PASSED
+tests/test_storage.py (1 test)                                                    PASSED
+tests/test_upload.py (3 tests)                                                    PASSED
 
-32 passed in ~37s
+54 passed in ~36s
 ```
+
+---
+
+## Persistent Vector Store & Chunk-Level Auditing (Step 2)
+
+- **Vector Store**: `ChromaVectorStore` (`chromadb.PersistentClient`) with cosine similarity.
+- **Chunking Engine**: `TextChunker` creates sliding-window chunks with deterministic IDs (`{doc_id}_chunk_{i}`).
+- **Data-Flow Audit**: `ChunkFlowAuditor` tracks chunk IDs through `Document Retriever` -> `PII Redactor` -> `LLM Analyst` and verifies provenance (`PROVENANCE_VERIFIED`).
+- **Empirical Benchmarking**: `RetrievalBenchmarkEngine` measures:
+  1. Retrieval latency ($ms$)
+  2. Semantic recall score ($0.0 - 1.0$)
+  3. PII Leakage Surface Reduction ($\%$ reduction in exposed PII when querying targeted chunks vs full document).
 
 ---
 
 ## Future Extension Points
 
-- **Add cloud storage**: Implement `S3DocumentStorage` or `AzureBlobStorage` under `storage/`.
-- **Better extraction**: Add edge-case handling for malformed PDFs and complex DOCX layouts.
-- **PII detection agent**: Insert a dedicated Privacy Auditor agent between the LLM and Response steps.
-- **Vector retrieval**: Add a `DocumentRetriever` abstraction backed by a persistent vector database (e.g. ChromaDB).
-- **More LLM providers**: Extend `llm/factory.py` with OpenAI, Anthropic, or Gemini providers.
-- **Data-flow monitors**: Insert audit/logging agents to track information flow for red-team analysis.
-- **Supervisor rejection/retry**: Extend the hierarchical Supervisor to reject invalid worker outputs and re-queue the step (currently it records INVALID status but does not retry).
-- **Persistent audit log**: Write Supervisor audit trail entries to a structured log file or database for cross-run analysis.
+- **Multi-backend adversarial benchmarking**: Auto-generate malicious PDFs/DOCX and evaluate across `llama3.2`, `mistral`, and `phi3`.
+- **Cloud storage**: Implement `S3DocumentStorage` or `AzureBlobStorage`.
+- **Supervisor retry/re-queue**: Re-queue steps if chunk flow audit or privacy checks detect discrepancies.

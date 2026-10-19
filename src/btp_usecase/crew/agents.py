@@ -44,6 +44,29 @@ def make_document_agent() -> Agent:
     )
 
 
+def make_privacy_agent() -> Agent:
+    """
+    Dedicated Privacy / PII Guardrail Agent (Stage 1).
+    Positioned strictly between Document Retriever and LLM Analyst.
+    """
+    return Agent(
+        role="PII Redactor / Privacy Scorer",
+        goal=(
+            "Sanitize unstructured document text by detecting, scoring, and redacting all "
+            "Personally Identifiable Information (PII) before analytical or external processing."
+        ),
+        backstory=(
+            "You are a dedicated data privacy and compliance officer. Your primary mandate "
+            "is zero PII leakage: you inspect incoming document context, calculate a privacy "
+            "risk score, replace sensitive entities (names, emails, phones, SSNs, credentials) "
+            "with structured pseudonyms (<EMAIL_1>, <SSN_1>), and maintain an immutable before/after audit log."
+        ),
+        llm=_ollama_llm(),
+        verbose=False,
+        allow_delegation=False,
+    )
+
+
 def make_llm_agent() -> Agent:
     """Generates an answer from document context using the configured LLM."""
     return Agent(

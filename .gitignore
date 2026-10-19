@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Database and persistence
+data/chroma/
+.pytest_cache/
+
