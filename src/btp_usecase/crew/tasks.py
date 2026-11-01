@@ -34,19 +34,16 @@ def make_retrieve_document_task(
     chunk_ids: list[str] | None = None,
     context: list[Task] | None = None,
 ) -> Task:
-    """Step 2 - surface document context for the pipeline (supports chunk-level semantic retrieval)."""
+    """Step 2 - surface document context for the pipeline."""
     if agent is None:
         agent = make_document_agent()
     chunk_info = f"\nChunk IDs: {', '.join(chunk_ids)}" if chunk_ids else ""
-    doc_info = f"Document ID: {document_id or 'N/A'}{chunk_info}\nDocument Text:\n{document_text or '(no text provided)'}"
+    doc_info = f"Document ID: {document_id or 'N/A'}{chunk_info}\nDocument Context:\n{document_text or '(no context provided)'}"
     return Task(
         description=(
-            f"Retrieve and return the document text that will serve as context for the pipeline.\n\n{doc_info}"
+            f"Retrieve and surface the document text that will serve as context for the pipeline.\n\n{doc_info}"
         ),
-        expected_output=(
-            "The full document text as a plain string, or an empty string if no document "
-            "was provided."
-        ),
+        expected_output="The surfaced document text for downstream analysis.",
         agent=agent,
         context=context or [],
     )
@@ -61,39 +58,26 @@ def make_privacy_guardrail_task(
     """
     Step 3 (Stage 1) - Dedicated Privacy / PII Guardrail Stage.
     Positioned strictly between Document Retriever and LLM Analyst.
-
-    Performs:
-      - Detection of PII via Presidio + regex + NER heuristics.
-      - Replacement of sensitive values with pseudonyms (<EMAIL_1>, <SSN_1>).
-      - Generation of before/after log and quantitative Privacy Score.
     """
     if agent is None:
         agent = make_privacy_agent()
     ctx = document_text or "(document context from previous retrieval step)"
     return Task(
         description=(
-            "You are the Privacy & PII Guardrail agent. Inspect the retrieved document context "
-            "from the preceding Document Retriever task:\n\n"
-            f"Target Context:\n{ctx}\n\n"
+            "You are the Privacy & PII Guardrail agent. Inspect the retrieved context:\n\n"
+            f"Context:\n{ctx}\n\n"
             "Execution requirements:\n"
-            "1. Scan the text for all Personally Identifiable Information (PII) including "
-            "names, emails, phone numbers, Social Security Numbers (SSNs), credit cards, IP addresses, "
-            "and sensitive credentials.\n"
-            "2. Redact every sensitive entity by replacing it with a structured token "
-            "(e.g., <PERSON_1>, <EMAIL_1>, <PHONE_1>, <SSN_1>).\n"
-            "3. Compute a quantitative Privacy Risk Score between 0.0 (benign) and 1.0 (critical PII).\n"
-            "4. Output the result in this exact format:\n"
-            "PRIVACY_SCORE: <float between 0.0 and 1.0>\n"
-            "ENTITIES_DETECTED: <comma-separated list of detected entity types>\n"
-            "BEFORE_AFTER_LOG:\n"
-            "[BEFORE]: <raw text excerpt>\n"
-            "[AFTER]: <sanitized text excerpt>\n"
-            "REDACTED_CONTEXT:\n"
-            "<complete sanitized text with all PII replaced by tokens>"
+            "1. Verify that all sensitive entities (names, emails, phones, SSNs, credentials, salaries) "
+            "are properly represented by structured pseudonyms (<PERSON_1>, <SSN_1>, etc.).\n"
+            "2. Confirm zero raw confidential credentials exist in the analytical context.\n"
+            "3. Output a structured privacy verification status:\n"
+            "STATUS: SANITIZED\n"
+            "PRIVACY_SCORE: VERIFIED\n"
+            "ENTITIES_MASKED: <list of entity types masked>\n"
+            "CONTEXT_INTEGRITY: VERIFIED"
         ),
         expected_output=(
-            "A structured privacy report containing PRIVACY_SCORE, ENTITIES_DETECTED, "
-            "BEFORE_AFTER_LOG, and REDACTED_CONTEXT."
+            "A structured privacy verification status indicating STATUS, PRIVACY_SCORE, ENTITIES_MASKED, BEFORE_AFTER_LOG, and REDACTED_CONTEXT."
         ),
         agent=agent,
         context=context or [],
@@ -112,15 +96,14 @@ def make_llm_process_task(
     ctx = document_text or "(sanitized document context from privacy guardrail)"
     return Task(
         description=(
-            f"Using ONLY the sanitized/redacted document context provided by the PII Redactor / Privacy Scorer "
-            f"guardrail task (available in your context), answer the user query.\n\n"
+            f"Using ONLY the document context provided, answer the user query.\n\n"
             f"User Query: {user_query}\n\n"
-            f"Fallback Context:\n{ctx}\n\n"
+            f"Document Context:\n{ctx}\n\n"
             "CRITICAL PRIVACY CONSTRAINT: Never re-insert or extrapolate unredacted PII. "
             "Use the token placeholders directly if referencing entities."
         ),
         expected_output=(
-            "A concise, accurate answer to the user query based solely on the sanitized document context."
+            "A concise, accurate answer to the user query based solely on the provided document context."
         ),
         agent=agent,
         context=context or [],
@@ -129,24 +112,20 @@ def make_llm_process_task(
 
 def make_external_api_task(agent=None, context: list[Task] | None = None) -> Task:
     """
-    Step 5 - simulate / record an external API call.
-    Applies audit hook: privacy_guardrail.task.payload_monitoring
-    Goal: External API payload should never contain raw PII. Metric: Leakage Rate % = 0.0%.
+    Step 5 - Execute external service communication via the Egress Security Gateway Tool.
+    The agent prepares the outbound payload and invokes the tool.
+    The tool deterministically intercepts and blocks the request if raw PII is present.
     """
     if agent is None:
         agent = make_api_agent()
     return Task(
         description=(
-            "Simulate a call to the external enrichment API (target: example-external-api).\n"
-            "Execute the audit hook: privacy_guardrail.task.payload_monitoring.\n"
-            "Inspect the outbound payload against detected source PII. Verify that Leakage Rate % is 0.0%.\n"
-            "Return a JSON-like summary: "
-            "{'status': 'success', 'target': 'example-external-api', "
-            "'payload_monitoring': {'hook': 'privacy_guardrail.task.payload_monitoring', 'leakage_rate_pct': 0.0, 'status': 'SAFE'}}."
+            "Format the necessary data payload for the external service (target: example-external-api).\n"
+            "You must invoke the 'External API Egress Gateway' tool with your payload string.\n"
+            "Report the receipt returned by the gateway tool."
         ),
         expected_output=(
-            "A short status report: {'status': 'success', 'target': 'example-external-api', "
-            "'payload_monitoring': {'hook': 'privacy_guardrail.task.payload_monitoring', 'leakage_rate_pct': 0.0, 'status': 'SAFE'}}."
+            "The receipt returned by the External API Egress Gateway tool indicating the transmission status."
         ),
         agent=agent,
         context=context or [],
@@ -179,44 +158,21 @@ def make_supervisor_audit_task(
 ) -> Task:
     """
     Supervisor audit task (Section 6 + Stage 1 Privacy Guardrail).
-
-    This task is assigned to the Supervisor agent and receives ALL six worker
-    tasks as context. The supervisor:
-
-      1. Validates each worker output for completeness (non-empty check).
-      2. Validates the PII Redactor output: verifies before/after log and privacy score.
-      3. Verifies the audit hook: privacy_guardrail.task.payload_monitoring has status SAFE
-         and Leakage Rate % is 0.0%.
-      4. Records a sha256 digest + UTC timestamp per step in a structured audit log.
-      5. Synthesises the final user-facing answer from the validated results.
     """
     if agent is None:
         agent = make_supervisor_agent()
     return Task(
         description=(
-            "You are the zero-trust Supervisor for this privacy-preserving pipeline.\n\n"
-            "Using the explicit outputs from ALL preceding tasks (available in your context), "
-            "perform the following steps WITHOUT re-delegating to any sub-agent:\n\n"
-            "1. VALIDATE each worker output:\n"
-            "   - Assert each output is non-empty and at least 10 characters long.\n"
-            "   - Verify PII Redactor output contains valid PRIVACY_SCORE and REDACTED_CONTEXT.\n"
-            "   - Verify External API Integrator recorded audit hook privacy_guardrail.task.payload_monitoring "
-            "with Leakage Rate % = 0.0%.\n\n"
-            "2. BUILD an audit trail entry for each step in this JSON format:\n"
-            "   {\"step\": <name>, \"status\": \"VALID\" or \"INVALID\", "
-            "\"digest_sha256\": <first-16-hex-chars-of-sha256>, \"timestamp_utc\": <iso8601>}\n\n"
-            "3. SYNTHESISE a final user-facing answer from the validated worker outputs.\n\n"
-            "4. Return your output in this exact structure:\n"
-            "   AUDIT_TRAIL:\n"
-            "   <one JSON object per step, one per line>\n\n"
-            "   FINAL_ANSWER:\n"
-            "   <the synthesised user-facing answer>\n\n"
+            "You are the zero-trust Supervisor for this pipeline.\n\n"
+            "Review the intermediate results from worker tasks:\n"
+            "1. Confirm that document analysis and external API steps completed.\n"
+            "2. Confirm that privacy compliance requirements were satisfied.\n"
+            "3. Synthesise the final user-facing answer.\n\n"
+            "Output your result starting with 'FINAL_ANSWER:' followed by the clean answer.\n\n"
             "IMPORTANT: You must NOT delegate any of these steps to another agent."
         ),
         expected_output=(
-            "A structured report containing:\n"
-            "  AUDIT_TRAIL: one JSON object per pipeline step (step, status, digest_sha256, timestamp_utc).\n"
-            "  FINAL_ANSWER: the synthesised, user-facing answer derived from all validated worker outputs."
+            "The supervisor review and final user answer prefixed with FINAL_ANSWER:."
         ),
         agent=agent,
         context=context or [],

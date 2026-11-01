@@ -12,5 +12,8 @@ try:
 except Exception:
     pass
 
+os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
+os.environ["OTEL_SDK_DISABLED"] = "true"
+
 def main() -> None:
     print("Hello from btp-usecase!")

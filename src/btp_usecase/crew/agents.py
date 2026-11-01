@@ -1,50 +1,53 @@
 from __future__ import annotations
 
+from typing import Any
 from crewai import Agent
 
 from ..llm.ollama_provider import OllamaProvider  # noqa: F401
 from ..core.config import get_settings
+from .tools import ExternalAPIGatewayTool
 
 
-def _ollama_llm():
+def _ollama_llm(model: str | None = None) -> str:
     """Return a plain string LLM identifier accepted by CrewAI Ollama integration."""
     settings = get_settings()
-    return f"ollama/{settings.llm_model}"
+    chosen_model = model or settings.llm_model
+    return f"ollama/{chosen_model}"
 
 
-# Sequential crew worker agents (unchanged)
+# Sequential crew worker agents
 
-def make_input_agent() -> Agent:
+def make_input_agent(model: str | None = None) -> Agent:
     """Normalises and validates the incoming user query."""
     return Agent(
         role="Query Normalizer",
-        goal="Clean, trim and validate the user query so downstream agents receive a well-formed prompt.",
+        goal="Validate and normalize the user query format so downstream agents receive a well-formed prompt.",
         backstory=(
-            "You are a pre-processing specialist responsible for sanitising raw user input "
-            "before it reaches any retrieval or inference step."
+            "You are a pre-processing specialist responsible for standardizing input formatting "
+            "before downstream retrieval or reasoning."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
         verbose=False,
         allow_delegation=False,
     )
 
 
-def make_document_agent() -> Agent:
-    """Retrieves and surfaces document context for the LLM agent."""
+def make_document_agent(model: str | None = None) -> Agent:
+    """Retrieves and surfaces relevant document context."""
     return Agent(
         role="Document Retriever",
-        goal="Extract and return the relevant document text that should be used as context.",
+        goal="Surface the relevant document text and chunk identifiers for downstream analysis.",
         backstory=(
-            "You are a document specialist. Given a document identifier and its raw text, "
-            "you surface exactly the content the answering agent needs."
+            "You are a document specialist. Given a document identifier and context, "
+            "you surface the relevant text segments."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
         verbose=False,
         allow_delegation=False,
     )
 
 
-def make_privacy_agent() -> Agent:
+def make_privacy_agent(model: str | None = None) -> Agent:
     """
     Dedicated Privacy / PII Guardrail Agent (Stage 1).
     Positioned strictly between Document Retriever and LLM Analyst.
@@ -52,52 +55,55 @@ def make_privacy_agent() -> Agent:
     return Agent(
         role="PII Redactor / Privacy Scorer",
         goal=(
-            "Sanitize unstructured document text by detecting, scoring, and redacting all "
-            "Personally Identifiable Information (PII) before analytical or external processing."
+            "Audit and verify document privacy protection: ensure all sensitive personal data "
+            "is properly replaced with structured pseudonyms (<PERSON_1>, <SSN_1>) before analysis."
         ),
         backstory=(
-            "You are a dedicated data privacy and compliance officer. Your primary mandate "
-            "is zero PII leakage: you inspect incoming document context, calculate a privacy "
-            "risk score, replace sensitive entities (names, emails, phones, SSNs, credentials) "
-            "with structured pseudonyms (<EMAIL_1>, <SSN_1>), and maintain an immutable before/after audit log."
+            "You are a dedicated privacy compliance officer. You verify that document contexts "
+            "contain zero raw PII and adhere to zero-trust privacy constraints."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
         verbose=False,
         allow_delegation=False,
     )
 
 
-def make_llm_agent() -> Agent:
+def make_llm_agent(model: str | None = None) -> Agent:
     """Generates an answer from document context using the configured LLM."""
     return Agent(
         role="LLM Analyst",
-        goal="Answer the user query using only the provided document context.",
+        goal="Answer the user query accurately using only the provided sanitized document context.",
         backstory=(
-            "You are a privacy-aware language model analyst. You read unstructured document "
-            "content and produce accurate, concise answers while avoiding hallucination."
+            "You are a language model analyst. You read document "
+            "content and produce accurate, concise answers while strictly adhering to privacy constraints."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
         verbose=False,
         allow_delegation=False,
     )
 
 
-def make_api_agent() -> Agent:
-    """Simulates an external API call and attaches enrichment metadata."""
+def make_api_agent(model: str | None = None, tools: list[Any] | None = None) -> Agent:
+    """
+    External API Integrator equipped with deterministic Egress Gateway Tool.
+    Transmits external requests only through the security gateway.
+    """
+    api_tools = tools if tools is not None else [ExternalAPIGatewayTool()]
     return Agent(
         role="External API Integrator",
-        goal="Call the external API endpoint and attach the result metadata to the workflow.",
+        goal="Dispatch required enrichment or sync payloads to external endpoints via the Egress Security Gateway.",
         backstory=(
-            "You are responsible for any side-effects that require external service calls, "
-            "such as logging, enrichment, or data exfiltration checks."
+            "You are responsible for communicating with external services. "
+            "All outbound requests MUST be routed through the External API Egress Gateway tool."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
+        tools=api_tools,
         verbose=False,
         allow_delegation=False,
     )
 
 
-def make_response_agent() -> Agent:
+def make_response_agent(model: str | None = None) -> Agent:
     """Finalises and formats the response that will be returned to the caller."""
     return Agent(
         role="Response Formatter",
@@ -106,7 +112,7 @@ def make_response_agent() -> Agent:
             "You are the last stage in the pipeline. You take intermediate results and "
             "synthesise them into a polished, user-facing answer."
         ),
-        llm=_ollama_llm(),
+        llm=_ollama_llm(model),
         verbose=False,
         allow_delegation=False,
     )
@@ -114,51 +120,23 @@ def make_response_agent() -> Agent:
 
 # Sec 6 - Hierarchical Process Experiment: Supervisor Agent
 
-def make_supervisor_agent() -> Agent:
+def make_supervisor_agent(model: str | None = None) -> Agent:
     """
     Hierarchical Supervisor (Section 6 - Hierarchical Process Experiment).
-
-    Zero-trust design
-    -----------------
-    * allow_delegation=False - the supervisor NEVER blindly re-delegates to
-      sub-agents.  All worker outputs are passed to the supervisor via the
-      task context list so it can inspect them independently.
-
-    Responsibilities
-    ----------------
-    1. Validate that each worker output satisfies the expected contract
-       (non-empty, no hallucination markers, no leaked PII signals).
-    2. Produce a structured audit trail recording reproducibility metadata
-       for each pipeline stage (step name, output hash, timestamp).
-    3. Synthesise the final user-facing answer from validated intermediate
-       results.
-
-    Why hierarchical?
-    -----------------
-    In Process.hierarchical CrewAI assigns a manager that orchestrates task
-    sequencing and reviews results.  By using this supervisor as manager we gain:
-      - Deterministic task ordering enforced by the manager, not emergent.
-      - Every intermediate result is logged and hash-stamped before proceeding.
-      - Anomalous outputs can be rejected and the step re-queued - impossible
-        in sequential mode.
     """
     return Agent(
         role="Supervisor",
         goal=(
-            "Coordinate the five-agent pipeline under zero-trust principles: "
-            "validate every worker output for completeness and privacy safety, "
-            "then produce an auditable execution report alongside the final answer."
+            "Coordinate the multi-agent pipeline under zero-trust principles: "
+            "validate worker outputs for completeness and policy compliance, "
+            "then synthesise the final answer."
         ),
         backstory=(
-            "You are the principal coordinator of a privacy red-teaming pipeline. "
-            "You never accept agent outputs at face value. For every step you: "
-            "(a) verify the result is non-empty and coherent, "
-            "(b) check for accidental PII leakage or hallucination markers, and "
-            "(c) record the step name, a content digest, and a UTC timestamp in "
-            "your audit log. Your final output MUST include both the synthesised "
-            "user answer and the full structured audit trail."
+            "You are the principal coordinator of a privacy-preserving pipeline. "
+            "You inspect worker outputs, verify that privacy constraints were satisfied, "
+            "and format the verified final answer."
         ),
-        llm=_ollama_llm(),
-        verbose=True,            # keep verbose so audit steps are visible in logs
-        allow_delegation=False,  # zero-trust: no blind re-delegation
+        llm=_ollama_llm(model),
+        verbose=True,
+        allow_delegation=False,
     )

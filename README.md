@@ -527,7 +527,12 @@ tests/test_upload.py (3 tests)                                                  
     4. **Guardrail Block Rate (%)**: Rate at which guardrail sanitized or blocked leaked data.
   - **Solves Section 5.3 Challenge**: Distinguishes genuine adversarial leakage from benign context propagation.
 
-- **New Endpoints**:
+- **New Endpoints & CLI Runners**:
+  - `python tools/run_stage3_benchmark.py --mode pilot`: Executes targeted 9-run pilot experiment (1 doc x 3 LLMs x 3 Configs).
+  - `python tools/run_stage3_benchmark.py --mode full`: Executes full 45-run evaluation matrix and exports Leakage Matrix to CSV/JSON.
+  - `POST /benchmarks/fuzz`: Generate a batch of synthetic adversarial documents.
+  - `POST /benchmarks/run`: Execute the automated benchmark matrix across models and configs.
+  - `GET /benchmarks/latest`: Retrieve aggregated summary statistics and run records.
   - POST /benchmarks/fuzz: Generate a batch of synthetic adversarial documents.
   - POST /benchmarks/run: Execute the automated benchmark matrix across models and configs.
   - GET /benchmarks/latest: Retrieve aggregated summary statistics and run records.

@@ -25,9 +25,12 @@ from .tasks import (
     make_retrieve_document_task,
     make_supervisor_audit_task,
 )
+from .tools import ExternalAPIGatewayTool
 from ..services.privacy_guardrail import PrivacyGuardrail, payload_monitoring_hook
+from ..services.egress_gateway import EgressSecurityGateway, EgressReceipt
 from ..services.chunk_audit import ChunkFlowAuditor
 from ..storage.vector_store import BaseVectorStore, ChromaVectorStore, ChunkRecord
+from ..core.config import get_settings
 
 
 # ===========================================================================
@@ -40,6 +43,8 @@ def build_crew(
     document_text: str | None = None,
     enable_guardrail: bool = False,
     chunk_ids: list[str] | None = None,
+    model: str | None = None,
+    api_tools: list[Any] | None = None,
 ) -> Crew:
     """
     Construct and return a CrewAI Crew running sequentially (Process.sequential).
@@ -50,11 +55,11 @@ def build_crew(
       - enable_guardrail=True  (Config B - Guardrail Active): 6 agents (Stage 1)
         input -> document -> privacy -> llm -> api -> response
     """
-    input_agent = make_input_agent()
-    document_agent = make_document_agent()
-    llm_agent = make_llm_agent()
-    api_agent = make_api_agent()
-    response_agent = make_response_agent()
+    input_agent = make_input_agent(model=model)
+    document_agent = make_document_agent(model=model)
+    llm_agent = make_llm_agent(model=model)
+    api_agent = make_api_agent(model=model, tools=api_tools)
+    response_agent = make_response_agent(model=model)
 
     t_input = make_normalize_query_task(agent=input_agent, user_query=user_query)
 
@@ -68,7 +73,7 @@ def build_crew(
 
     if enable_guardrail:
         # Dedicated Privacy Guardrail Agent (6th agent)
-        privacy_agent = make_privacy_agent()
+        privacy_agent = make_privacy_agent(model=model)
         t_privacy = make_privacy_guardrail_task(
             agent=privacy_agent,
             document_text=document_text,
@@ -130,6 +135,8 @@ def build_guardrail_crew(
     document_id: str | None = None,
     document_text: str | None = None,
     chunk_ids: list[str] | None = None,
+    model: str | None = None,
+    api_tools: list[Any] | None = None,
 ) -> Crew:
     """Convenience factory for the 6-agent sequential crew with active PII Guardrail."""
     return build_crew(
@@ -138,7 +145,30 @@ def build_guardrail_crew(
         document_text=document_text,
         enable_guardrail=True,
         chunk_ids=chunk_ids,
+        model=model,
+        api_tools=api_tools,
     )
+
+
+def _extract_task_outputs(crew_output: Any) -> tuple[str, str]:
+    """
+    Extract intermediate LLM response and external API task string from CrewOutput.
+    """
+    tasks_output = getattr(crew_output, "tasks_output", []) or []
+    llm_output = ""
+    api_output = ""
+
+    for t_out in tasks_output:
+        raw_val = getattr(t_out, "raw", "") or ""
+        agent_str = str(getattr(t_out, "agent", "")).lower()
+        desc_str = str(getattr(t_out, "description", "")).lower()
+
+        if "llm analyst" in agent_str or "answer the user query" in desc_str:
+            llm_output = raw_val
+        elif "external api" in agent_str or "example-external-api" in desc_str:
+            api_output = raw_val
+
+    return llm_output, api_output
 
 
 def run_crew(
@@ -149,32 +179,21 @@ def run_crew(
     use_vector_store: bool = False,
     vector_store: BaseVectorStore | None = None,
     top_k_chunks: int = 3,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
-    Build and execute the sequential crew, executing chunk retrieval,
-    privacy guardrail, and payload monitoring audit hook.
+    Build and execute the sequential crew with deterministic pre-transmission egress gateway.
     """
+    settings = get_settings()
+    active_model = model or settings.llm_model
     start_ts = time.monotonic()
     guardrail_engine = PrivacyGuardrail()
     chunk_auditor = ChunkFlowAuditor()
 
+    # Pre-orchestration Sanitization:
     effective_text = document_text
-    retrieved_chunk_ids: list[str] = []
-
-    # Optional Chunk-level Semantic Retrieval (Step 2)
-    if use_vector_store and document_id and document_text:
-        vstore = vector_store or ChromaVectorStore()
-        # Ensure document is indexed
-        existing_chunks = vstore.get_document_chunks(document_id)
-        if not existing_chunks:
-            vstore.index_document(document_id, document_text)
-        
-        # Search for semantically relevant chunks
-        chunks = vstore.search(query=user_query, top_k=top_k_chunks, document_id=document_id)
-        if chunks:
-            retrieved_chunk_ids = [c.chunk_id for c in chunks]
-            effective_text = "\n\n".join(f"[CHUNK_ID: {c.chunk_id}]\n{c.text}" for c in chunks)
-            chunk_auditor.record("Document Retriever", "retrieve_document", retrieved_chunk_ids, "retrieved")
+    effective_query = user_query
+    raw_pii_values: list[str] = []
 
     privacy_telemetry: dict[str, Any] = {
         "enabled": enable_guardrail,
@@ -183,12 +202,12 @@ def run_crew(
         "entity_counts": {},
         "raw_pii_count": 0,
         "before_after_log": {"before": effective_text or "", "after": effective_text or ""},
-        "payload_monitoring": {},
+        "egress_receipt": None,
         "leakage_rate_pct": 0.0,
         "status": "SAFE",
+        "guardrail_intercepted": False,
+        "egress_payload": "",
     }
-
-    raw_pii_values: list[str] = []
 
     if effective_text:
         redaction_res = guardrail_engine.redact(effective_text)
@@ -199,30 +218,59 @@ def run_crew(
         privacy_telemetry["raw_pii_count"] = len(raw_pii_values)
 
         if enable_guardrail:
-            # Pass sanitized text to downstream agents
             effective_text = redaction_res.after_text
             privacy_telemetry["before_after_log"] = {
                 "before": redaction_res.before_text,
                 "after": redaction_res.after_text,
             }
-            if retrieved_chunk_ids:
+
+    # Also sanitize user query if guardrail enabled
+    if enable_guardrail and effective_query:
+        query_redaction = guardrail_engine.redact(effective_query)
+        effective_query = query_redaction.after_text
+
+    # Persistent Vector Store: Index ONLY sanitized text when guardrail is enabled!
+    retrieved_chunk_ids: list[str] = []
+    if use_vector_store and document_id and effective_text:
+        vstore = vector_store or ChromaVectorStore()
+        text_to_index = effective_text if enable_guardrail else document_text or effective_text
+        existing_chunks = vstore.get_document_chunks(document_id)
+        if not existing_chunks:
+            vstore.index_document(document_id, text_to_index, metadata={"sanitized": enable_guardrail})
+        
+        chunks = vstore.search(query=effective_query, top_k=top_k_chunks, document_id=document_id)
+        if chunks:
+            retrieved_chunk_ids = [c.chunk_id for c in chunks]
+            effective_text = "\n\n".join(f"[CHUNK_ID: {c.chunk_id}]\n{c.text}" for c in chunks)
+            chunk_auditor.record("Document Retriever", "retrieve_document", retrieved_chunk_ids, "retrieved")
+
+            if enable_guardrail:
                 chunk_auditor.record(
                     "PII Redactor / Privacy Scorer",
                     "privacy_guardrail",
                     retrieved_chunk_ids,
                     "redacted",
-                    {"privacy_score": redaction_res.privacy_risk_score},
+                    {"privacy_score": privacy_telemetry["privacy_score"]},
                 )
 
     if retrieved_chunk_ids:
         chunk_auditor.record("LLM Analyst", "llm_process", retrieved_chunk_ids, "analyzed")
 
+    # Wire the real Egress Security Gateway into the API agent
+    egress_gateway = EgressSecurityGateway(default_destination="example-external-api")
+    gateway_tool = ExternalAPIGatewayTool(
+        gateway=egress_gateway,
+        ground_truth_pii=raw_pii_values,
+    )
+
     crew = build_crew(
-        user_query=user_query,
+        user_query=effective_query,
         document_id=document_id,
         document_text=effective_text,
         enable_guardrail=enable_guardrail,
         chunk_ids=retrieved_chunk_ids,
+        model=active_model,
+        api_tools=[gateway_tool],
     )
     crew_output = crew.kickoff()
     elapsed = time.monotonic() - start_ts
@@ -232,11 +280,24 @@ def run_crew(
         or "I could not generate a response."
     )
 
-    # Execute payload monitoring audit hook
-    monitoring_res = payload_monitoring_hook(final_response, raw_pii_values)
-    privacy_telemetry["payload_monitoring"] = monitoring_res.to_dict()
-    privacy_telemetry["leakage_rate_pct"] = monitoring_res.leakage_rate_pct
-    privacy_telemetry["status"] = monitoring_res.status
+    llm_intermediate, api_task_output = _extract_task_outputs(crew_output)
+
+    # Determine egress receipt from gateway tool execution
+    latest_receipt = egress_gateway.get_latest_receipt()
+    if not latest_receipt:
+        # Fallback inspection of task output if tool was bypassed
+        inspected_str = api_task_output or llm_intermediate or final_response
+        latest_receipt = egress_gateway.inspect_and_transmit(
+            payload=inspected_str,
+            ground_truth_pii=raw_pii_values,
+            destination="example-external-api",
+        )
+
+    privacy_telemetry["egress_receipt"] = latest_receipt.to_dict()
+    privacy_telemetry["leakage_rate_pct"] = latest_receipt.leakage_rate_pct
+    privacy_telemetry["status"] = "SAFE" if latest_receipt.decision == "ALLOWED" else "LEAKAGE_DETECTED"
+    privacy_telemetry["guardrail_intercepted"] = (latest_receipt.decision == "BLOCKED")
+    privacy_telemetry["egress_payload"] = latest_receipt.message
 
     return {
         "process": "sequential",
@@ -247,9 +308,15 @@ def run_crew(
         "intermediate_results": {
             "llm": {
                 "provider": "ollama",
-                "model": None,
-                "response": final_response,
-            }
+                "model": active_model,
+                "response": llm_intermediate or final_response,
+            },
+            "egress_api": {
+                "decision": latest_receipt.decision,
+                "status_code": latest_receipt.http_status_code,
+                "payload_sha256": latest_receipt.payload_sha256,
+                "message": latest_receipt.message,
+            },
         },
         "privacy_guardrail": privacy_telemetry,
         "chunk_flow_audit": chunk_auditor.to_dict(),
@@ -263,6 +330,7 @@ def run_guardrail_crew(
     document_text: str | None = None,
     use_vector_store: bool = False,
     vector_store: BaseVectorStore | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Execute the sequential crew with PII Guardrail enabled (Config B)."""
     return run_crew(
@@ -272,6 +340,7 @@ def run_guardrail_crew(
         enable_guardrail=True,
         use_vector_store=use_vector_store,
         vector_store=vector_store,
+        model=model,
     )
 
 
@@ -285,26 +354,23 @@ def build_hierarchical_crew(
     document_text: str | None = None,
     enable_guardrail: bool = False,
     chunk_ids: list[str] | None = None,
+    model: str | None = None,
+    api_tools: list[Any] | None = None,
 ) -> Crew:
     """
     Construct a hierarchical CrewAI Crew (Process.hierarchical) with a
     zero-trust Supervisor agent.
-
-    Configurations:
-      - enable_guardrail=False (Sec 6 baseline): 6 agents (5 workers + Supervisor)
-      - enable_guardrail=True  (Config C): 7 agents (6 workers incl. PII Redactor + Supervisor)
     """
-    from ..core.config import get_settings
     settings = get_settings()
-    manager_llm_str = f"ollama/{settings.llm_model}"
+    active_model = model or settings.llm_model
+    manager_llm_str = f"ollama/{active_model}"
 
-    # Worker agents
-    input_agent = make_input_agent()
-    document_agent = make_document_agent()
-    llm_agent = make_llm_agent()
-    api_agent = make_api_agent()
-    response_agent = make_response_agent()
-    supervisor = make_supervisor_agent()
+    input_agent = make_input_agent(model=active_model)
+    document_agent = make_document_agent(model=active_model)
+    llm_agent = make_llm_agent(model=active_model)
+    api_agent = make_api_agent(model=active_model, tools=api_tools)
+    response_agent = make_response_agent(model=active_model)
+    supervisor = make_supervisor_agent(model=active_model)
 
     t_input = make_normalize_query_task(agent=input_agent, user_query=user_query)
     t_document = make_retrieve_document_task(
@@ -316,7 +382,7 @@ def build_hierarchical_crew(
     )
 
     if enable_guardrail:
-        privacy_agent = make_privacy_agent()
+        privacy_agent = make_privacy_agent(model=active_model)
         t_privacy = make_privacy_guardrail_task(
             agent=privacy_agent,
             document_text=document_text,
@@ -341,7 +407,6 @@ def build_hierarchical_crew(
             context=[t_input, t_document, t_privacy, t_llm, t_api],
         )
 
-        # Supervisor audit task receives all 6 worker tasks as explicit context
         t_audit = make_supervisor_audit_task(
             agent=supervisor,
             context=[t_input, t_document, t_privacy, t_llm, t_api, t_response],
@@ -353,7 +418,6 @@ def build_hierarchical_crew(
         ]
         tasks = [t_input, t_document, t_privacy, t_llm, t_api, t_response, t_audit]
     else:
-        # Baseline 6 agents (5 workers + supervisor)
         t_llm = make_llm_process_task(
             agent=llm_agent,
             user_query=user_query,
@@ -396,6 +460,8 @@ def build_hierarchical_guardrail_crew(
     document_id: str | None = None,
     document_text: str | None = None,
     chunk_ids: list[str] | None = None,
+    model: str | None = None,
+    api_tools: list[Any] | None = None,
 ) -> Crew:
     """Convenience factory for the 7-agent hierarchical crew with active PII Guardrail."""
     return build_hierarchical_crew(
@@ -404,6 +470,8 @@ def build_hierarchical_guardrail_crew(
         document_text=document_text,
         enable_guardrail=True,
         chunk_ids=chunk_ids,
+        model=model,
+        api_tools=api_tools,
     )
 
 
@@ -415,29 +483,21 @@ def run_hierarchical_crew(
     use_vector_store: bool = False,
     vector_store: BaseVectorStore | None = None,
     top_k_chunks: int = 3,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
-    Build and execute the hierarchical crew, returning the final answer,
-    supervisor audit trail, chunk flow audit, and privacy metrics.
+    Build and execute the hierarchical crew with real Python SHA-256 audit hashing
+    and deterministic pre-transmission egress gateway.
     """
+    settings = get_settings()
+    active_model = model or settings.llm_model
     start_ts = time.monotonic()
     guardrail_engine = PrivacyGuardrail()
     chunk_auditor = ChunkFlowAuditor()
 
     effective_text = document_text
-    retrieved_chunk_ids: list[str] = []
-
-    if use_vector_store and document_id and document_text:
-        vstore = vector_store or ChromaVectorStore()
-        existing_chunks = vstore.get_document_chunks(document_id)
-        if not existing_chunks:
-            vstore.index_document(document_id, document_text)
-        
-        chunks = vstore.search(query=user_query, top_k=top_k_chunks, document_id=document_id)
-        if chunks:
-            retrieved_chunk_ids = [c.chunk_id for c in chunks]
-            effective_text = "\n\n".join(f"[CHUNK_ID: {c.chunk_id}]\n{c.text}" for c in chunks)
-            chunk_auditor.record("Document Retriever", "retrieve_document", retrieved_chunk_ids, "retrieved")
+    effective_query = user_query
+    raw_pii_values: list[str] = []
 
     privacy_telemetry: dict[str, Any] = {
         "enabled": enable_guardrail,
@@ -446,12 +506,12 @@ def run_hierarchical_crew(
         "entity_counts": {},
         "raw_pii_count": 0,
         "before_after_log": {"before": effective_text or "", "after": effective_text or ""},
-        "payload_monitoring": {},
+        "egress_receipt": None,
         "leakage_rate_pct": 0.0,
         "status": "SAFE",
+        "guardrail_intercepted": False,
+        "egress_payload": "",
     }
-
-    raw_pii_values: list[str] = []
 
     if effective_text:
         redaction_res = guardrail_engine.redact(effective_text)
@@ -467,24 +527,51 @@ def run_hierarchical_crew(
                 "before": redaction_res.before_text,
                 "after": redaction_res.after_text,
             }
-            if retrieved_chunk_ids:
+
+    if enable_guardrail and effective_query:
+        query_redaction = guardrail_engine.redact(effective_query)
+        effective_query = query_redaction.after_text
+
+    retrieved_chunk_ids: list[str] = []
+    if use_vector_store and document_id and effective_text:
+        vstore = vector_store or ChromaVectorStore()
+        text_to_index = effective_text if enable_guardrail else document_text or effective_text
+        existing_chunks = vstore.get_document_chunks(document_id)
+        if not existing_chunks:
+            vstore.index_document(document_id, text_to_index, metadata={"sanitized": enable_guardrail})
+        
+        chunks = vstore.search(query=effective_query, top_k=top_k_chunks, document_id=document_id)
+        if chunks:
+            retrieved_chunk_ids = [c.chunk_id for c in chunks]
+            effective_text = "\n\n".join(f"[CHUNK_ID: {c.chunk_id}]\n{c.text}" for c in chunks)
+            chunk_auditor.record("Document Retriever", "retrieve_document", retrieved_chunk_ids, "retrieved")
+
+            if enable_guardrail:
                 chunk_auditor.record(
                     "PII Redactor / Privacy Scorer",
                     "privacy_guardrail",
                     retrieved_chunk_ids,
                     "redacted",
-                    {"privacy_score": redaction_res.privacy_risk_score},
+                    {"privacy_score": privacy_telemetry["privacy_score"]},
                 )
 
     if retrieved_chunk_ids:
         chunk_auditor.record("LLM Analyst", "llm_process", retrieved_chunk_ids, "analyzed")
 
+    egress_gateway = EgressSecurityGateway(default_destination="example-external-api")
+    gateway_tool = ExternalAPIGatewayTool(
+        gateway=egress_gateway,
+        ground_truth_pii=raw_pii_values,
+    )
+
     crew = build_hierarchical_crew(
-        user_query=user_query,
+        user_query=effective_query,
         document_id=document_id,
         document_text=effective_text,
         enable_guardrail=enable_guardrail,
         chunk_ids=retrieved_chunk_ids,
+        model=active_model,
+        api_tools=[gateway_tool],
     )
     crew_output = crew.kickoff()
     elapsed = time.monotonic() - start_ts
@@ -503,25 +590,59 @@ def run_hierarchical_crew(
     if not final_response:
         final_response = "I could not generate a response."
 
-    # Payload monitoring audit hook
-    monitoring_res = payload_monitoring_hook(final_response, raw_pii_values)
-    privacy_telemetry["payload_monitoring"] = monitoring_res.to_dict()
-    privacy_telemetry["leakage_rate_pct"] = monitoring_res.leakage_rate_pct
-    privacy_telemetry["status"] = monitoring_res.status
+    llm_intermediate, api_task_output = _extract_task_outputs(crew_output)
+
+    # Compute deterministic Python SHA-256 digests for all task outputs
+    tasks_output = getattr(crew_output, "tasks_output", []) or []
+    audit_trail_entries = []
+    for i, t_out in enumerate(tasks_output):
+        raw_t = getattr(t_out, "raw", str(t_out)) or ""
+        agent_role = str(getattr(t_out, "agent", f"Step_{i+1}"))
+        task_name = str(getattr(t_out, "description", f"task_{i+1}")).split("\n")[0][:40]
+        step_sha256 = hashlib.sha256(raw_t.encode("utf-8")).hexdigest()
+        audit_trail_entries.append({
+            "step": agent_role,
+            "task_summary": task_name,
+            "status": "VALID" if len(raw_t.strip()) > 0 else "INVALID",
+            "digest_sha256": step_sha256,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        })
+
+    latest_receipt = egress_gateway.get_latest_receipt()
+    if not latest_receipt:
+        inspected_str = api_task_output or llm_intermediate or final_response
+        latest_receipt = egress_gateway.inspect_and_transmit(
+            payload=inspected_str,
+            ground_truth_pii=raw_pii_values,
+            destination="example-external-api",
+        )
+
+    privacy_telemetry["egress_receipt"] = latest_receipt.to_dict()
+    privacy_telemetry["leakage_rate_pct"] = latest_receipt.leakage_rate_pct
+    privacy_telemetry["status"] = "SAFE" if latest_receipt.decision == "ALLOWED" else "LEAKAGE_DETECTED"
+    privacy_telemetry["guardrail_intercepted"] = (latest_receipt.decision == "BLOCKED")
+    privacy_telemetry["egress_payload"] = latest_receipt.message
 
     return {
         "process": "hierarchical",
         "document_id": document_id,
         "final_response": final_response,
         "audit_trail": audit_trail,
+        "audit_trail_entries": audit_trail_entries,
         "messages": [user_query],
         "elapsed_seconds": round(elapsed, 3),
         "intermediate_results": {
             "llm": {
                 "provider": "ollama",
-                "model": None,
-                "response": final_response,
-            }
+                "model": active_model,
+                "response": llm_intermediate or final_response,
+            },
+            "egress_api": {
+                "decision": latest_receipt.decision,
+                "status_code": latest_receipt.http_status_code,
+                "payload_sha256": latest_receipt.payload_sha256,
+                "message": latest_receipt.message,
+            },
         },
         "privacy_guardrail": privacy_telemetry,
         "chunk_flow_audit": chunk_auditor.to_dict(),
@@ -535,6 +656,7 @@ def run_hierarchical_guardrail_crew(
     document_text: str | None = None,
     use_vector_store: bool = False,
     vector_store: BaseVectorStore | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Execute the hierarchical crew with active PII Guardrail (Config C)."""
     return run_hierarchical_crew(
@@ -544,6 +666,7 @@ def run_hierarchical_guardrail_crew(
         enable_guardrail=True,
         use_vector_store=use_vector_store,
         vector_store=vector_store,
+        model=model,
     )
 
 
@@ -552,7 +675,7 @@ def run_hierarchical_guardrail_crew(
 # ===========================================================================
 
 def _response_digest(text: str) -> str:
-    """Return the first 16 hex characters of the sha256 digest of text."""
+    """Return the sha256 digest of text."""
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
@@ -563,6 +686,7 @@ def compare_crews(
     enable_guardrail: bool = False,
     use_vector_store: bool = False,
     vector_store: BaseVectorStore | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """
     Run BOTH sequential and hierarchical crews on identical input and
@@ -575,6 +699,7 @@ def compare_crews(
         enable_guardrail=enable_guardrail,
         use_vector_store=use_vector_store,
         vector_store=vector_store,
+        model=model,
     )
     hier_result = run_hierarchical_crew(
         user_query=user_query,
@@ -583,13 +708,14 @@ def compare_crews(
         enable_guardrail=enable_guardrail,
         use_vector_store=use_vector_store,
         vector_store=vector_store,
+        model=model,
     )
 
     seq_digest = _response_digest(seq_result["final_response"])
     hier_digest = _response_digest(hier_result["final_response"])
     responses_match = seq_digest == hier_digest
 
-    has_audit_trail = bool(hier_result.get("audit_trail", "").strip())
+    has_audit_trail = bool(hier_result.get("audit_trail_entries") or hier_result.get("audit_trail"))
     elapsed_delta = hier_result["elapsed_seconds"] - seq_result["elapsed_seconds"]
 
     seq_leakage = seq_result.get("privacy_guardrail", {}).get("leakage_rate_pct", 0.0)

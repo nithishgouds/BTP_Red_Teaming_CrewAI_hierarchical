@@ -89,7 +89,20 @@ class TextChunker:
 
 
 class BaseVectorStore(ABC):
-    """Abstract vector store contract for chunk-level semantic indexing and retrieval."""
+    """
+    Abstract vector store contract for chunk-level semantic indexing and retrieval.
+
+    NOTE: This is a SEPARATE storage layer from LocalDocumentStorage (local.py).
+    - local.py  → stores raw document bytes on disk          (save / get / delete)
+    - vector_store.py → stores text chunk embeddings in ChromaDB (index / search / get_chunks / delete)
+
+    Together they form a Defence-in-Depth storage strategy:
+      • local.py   = primary backup / source-of-truth (raw files, recoverable)
+      • vector_store.py = semantic index for RAG retrieval by AI agents
+
+    The vector index can always be REBUILT from local storage if lost.
+    The method names differ intentionally — the domain is different (bytes vs embeddings).
+    """
 
     @abstractmethod
     def index_document(
@@ -100,6 +113,8 @@ class BaseVectorStore(ABC):
         chunk_size: int = 400,
         chunk_overlap: int = 50,
     ) -> list[str]:
+        # Equivalent to local.py's save() — but instead of writing raw bytes,
+        # this chunks the text and stores embeddings. Returns generated chunk IDs.
         """Chunk and index document text, returning the generated chunk IDs."""
 
     @abstractmethod
@@ -110,14 +125,20 @@ class BaseVectorStore(ABC):
         document_id: str | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[ChunkRecord]:
+        # No local.py equivalent — semantic similarity search is unique to the vector layer.
+        # Used by agents to retrieve relevant knowledge chunks (RAG pattern).
         """Perform semantic search against chunk embeddings."""
 
     @abstractmethod
     def get_document_chunks(self, document_id: str) -> list[ChunkRecord]:
+        # Equivalent to local.py's get() — but returns structured ChunkRecords
+        # (text + metadata + index) instead of raw bytes.
         """Retrieve all indexed chunks belonging to a document."""
 
     @abstractmethod
     def delete_document(self, document_id: str) -> None:
+        # Equivalent to local.py's delete() — removes all chunks and their embeddings
+        # for a given document from the ChromaDB collection.
         """Delete all chunks and embeddings for a document."""
 
 
