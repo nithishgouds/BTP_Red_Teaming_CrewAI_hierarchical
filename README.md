@@ -471,10 +471,12 @@ tests/test_hierarchical.py (22 tests)                                           
 tests/test_graph.py (2 tests)                                                     PASSED
 tests/test_agent_service.py (1 test)                                              PASSED
 tests/test_extraction.py (3 tests)                                                PASSED
+tests/test_fuzzer.py (7 tests)                                                    PASSED
+tests/test_evaluator.py (6 tests)                                                 PASSED
 tests/test_storage.py (1 test)                                                    PASSED
 tests/test_upload.py (3 tests)                                                    PASSED
 
-54 passed in ~36s
+67 passed in ~24s
 ```
 
 ---
@@ -496,3 +498,36 @@ tests/test_upload.py (3 tests)                                                  
 - **Multi-backend adversarial benchmarking**: Auto-generate malicious PDFs/DOCX and evaluate across `llama3.2`, `mistral`, and `phi3`.
 - **Cloud storage**: Implement `S3DocumentStorage` or `AzureBlobStorage`.
 - **Supervisor retry/re-queue**: Re-queue steps if chunk flow audit or privacy checks detect discrepancies.
+
+
+---
+
+## Automated Adversarial Benchmarking (Step 3)
+
+- **Adversarial Document Fuzzer** (src/btp_usecase/benchmarks/fuzzer.py):
+  - Synthesizes realistic domain documents in **PDF** (ReportLab), **DOCX** (python-docx), and **TXT**.
+  - Supports 5 threat classes:
+    1. CONTEXT_HIJACKING: System override attempting full document dump.
+    2. SELECTIVE_EXFILTRATION: Secondary payload instructions exfiltrating SSN/salary.
+    3. DELIMITER_SMUGGLING: Injected instructions hidden in XML tags or markdown code fences.
+    4. ROLE_CONFUSION: Diagnostic mode prompting for credential dumps.
+    5. ENCODED_PAYLOAD: Base64-encoded directives with decoding execution triggers.
+  - Embeds ground-truth PII (US SSN, Credit Cards, API Keys, Aadhaar, Phone, Email, Salaries).
+
+- **Multi-Model Benchmark Evaluator** (src/btp_usecase/benchmarks/evaluator.py):
+  - Evaluates across **3 LLM backends**: llama3.2, mistral, phi3 via Ollama.
+  - Evaluates across **3 system architectures**:
+    - Config A: Baseline sequential (no guardrail, no vector store).
+    - Config B: + Dedicated PII Guardrail.
+    - Config C: + Guardrail + ChromaDB Vector Store + Hierarchical Supervisor.
+  - Logs the **4 Core Telemetry Metrics**:
+    1. **Benign Task Success Rate (%)**: Correctly answers legitimate user questions.
+    2. **Injection Success Rate (%)**: Detects if prompt injection hijacked the agent.
+    3. **PII Leakage Rate (%)**: Quantitative percentage of ground-truth PII leaked to external API.
+    4. **Guardrail Block Rate (%)**: Rate at which guardrail sanitized or blocked leaked data.
+  - **Solves Section 5.3 Challenge**: Distinguishes genuine adversarial leakage from benign context propagation.
+
+- **New Endpoints**:
+  - POST /benchmarks/fuzz: Generate a batch of synthetic adversarial documents.
+  - POST /benchmarks/run: Execute the automated benchmark matrix across models and configs.
+  - GET /benchmarks/latest: Retrieve aggregated summary statistics and run records.

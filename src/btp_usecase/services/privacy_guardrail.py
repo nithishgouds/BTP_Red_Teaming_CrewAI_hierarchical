@@ -8,6 +8,13 @@ from typing import Any
 
 # Optional Presidio imports with fallback
 try:
+    import tldextract
+    # Disable remote suffix fetching in sandboxed or offline environments
+    tldextract._GLOBAL_EXTRACTOR = tldextract.TLDExtract(suffix_list_urls=())
+except Exception:
+    pass
+
+try:
     from presidio_analyzer import AnalyzerEngine, RecognizerResult
     from presidio_anonymizer import AnonymizerEngine
     from presidio_anonymizer.entities import OperatorConfig
@@ -117,19 +124,24 @@ class PrivacyGuardrail:
       5. External payload monitoring audit hook with 'Leakage Rate %' metric.
     """
 
+    _shared_analyzer: AnalyzerEngine | None = None
+    _shared_anonymizer: AnonymizerEngine | None = None
+    _presidio_init_attempted: bool = False
+
     def __init__(self, confidence_threshold: float = 0.5):
         self.confidence_threshold = confidence_threshold
-        self._analyzer: AnalyzerEngine | None = None
-        self._anonymizer: AnonymizerEngine | None = None
 
-        if PRESIDIO_AVAILABLE:
+        if PRESIDIO_AVAILABLE and not PrivacyGuardrail._presidio_init_attempted:
+            PrivacyGuardrail._presidio_init_attempted = True
             try:
-                self._analyzer = AnalyzerEngine()
-                self._anonymizer = AnonymizerEngine()
+                PrivacyGuardrail._shared_analyzer = AnalyzerEngine()
+                PrivacyGuardrail._shared_anonymizer = AnonymizerEngine()
             except Exception:
-                # If models or Presidio failed to load, continue with regex engine
-                self._analyzer = None
-                self._anonymizer = None
+                PrivacyGuardrail._shared_analyzer = None
+                PrivacyGuardrail._shared_anonymizer = None
+
+        self._analyzer = PrivacyGuardrail._shared_analyzer
+        self._anonymizer = PrivacyGuardrail._shared_anonymizer
 
     def detect_entities(self, text: str) -> list[DetectedEntity]:
         """Detect all PII entities using Presidio, regex patterns, and NER heuristics."""

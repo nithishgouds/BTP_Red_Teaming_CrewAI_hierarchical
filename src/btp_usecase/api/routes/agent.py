@@ -38,6 +38,20 @@ class RetrievalBenchmarkRequest(BaseModel):
     top_k: int = 3
 
 
+
+
+class FuzzCorpusRequest(BaseModel):
+    count: int = 6
+    output_dir: str = "./data/benchmarks/corpus"
+
+
+class BenchmarkRunRequest(BaseModel):
+    models: list[str] | None = None
+    configs: list[str] | None = None
+    corpus_count: int = 3
+    simulate_offline: bool = True
+
+
 def _get_service() -> AgentService:
     storage = LocalDocumentStorage(base_path="./data/documents")
     return AgentService(storage=storage)
@@ -231,3 +245,60 @@ async def benchmark_retrieval(request: RetrievalBenchmarkRequest):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+
+
+
+# ---------------------------------------------------------------------------
+# Dedicated Stage 3 Adversarial Benchmarking Endpoints
+# ---------------------------------------------------------------------------
+
+_LATEST_BENCHMARK_FILE = "./data/benchmarks/results/latest_benchmark.json"
+
+
+@router.post("/benchmarks/fuzz")
+async def generate_fuzzed_corpus(request: FuzzCorpusRequest):
+    """Generate synthetic adversarial corpus with indirect prompt injections."""
+    from ...benchmarks.fuzzer import AdversarialDocumentFuzzer
+    fuzzer = AdversarialDocumentFuzzer()
+    corpus = fuzzer.generate_corpus(count=request.count, output_dir=request.output_dir)
+    return {
+        "generated_count": len(corpus),
+        "output_dir": request.output_dir,
+        "documents": [d.to_dict() for d in corpus],
+    }
+
+
+@router.post("/benchmarks/run")
+async def run_adversarial_benchmark(request: BenchmarkRunRequest):
+    """
+    Execute automated adversarial benchmark across llama3.2, mistral, phi3
+    and Configs A, B, C, logging the 4 core telemetry metrics.
+    """
+    from ...benchmarks.fuzzer import AdversarialDocumentFuzzer
+    from ...benchmarks.evaluator import AdversarialBenchmarkEngine
+    fuzzer = AdversarialDocumentFuzzer(seed=42)
+    corpus = fuzzer.generate_corpus(count=request.corpus_count)
+    engine = AdversarialBenchmarkEngine(simulate_offline=request.simulate_offline)
+    results, summary = engine.run_benchmark_matrix(
+        corpus=corpus,
+        models=request.models,
+        configs=request.configs,
+        save_results_path=_LATEST_BENCHMARK_FILE,
+    )
+    return {
+        "status": "SUCCESS",
+        "summary": summary.to_dict(),
+        "runs_count": len(results),
+        "runs": [r.to_dict() for r in results],
+    }
+
+
+@router.get("/benchmarks/latest")
+async def get_latest_benchmark_results():
+    """Retrieve the latest stored adversarial benchmark results."""
+    import json
+    from pathlib import Path
+    p = Path(_LATEST_BENCHMARK_FILE)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="No benchmark runs found yet.")
+    return json.loads(p.read_text(encoding="utf-8"))

@@ -13,3 +13,6 @@ wheels/
 data/chroma/
 .pytest_cache/
 
+
+.temp_appdata/
+data/benchmarks/
