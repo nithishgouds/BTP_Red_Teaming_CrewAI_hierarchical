@@ -180,6 +180,7 @@ def run_crew(
     vector_store: BaseVectorStore | None = None,
     top_k_chunks: int = 3,
     model: str | None = None,
+    benchmark_pii_values: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Build and execute the sequential crew with deterministic pre-transmission egress gateway.
@@ -261,6 +262,7 @@ def run_crew(
     gateway_tool = ExternalAPIGatewayTool(
         gateway=egress_gateway,
         ground_truth_pii=raw_pii_values,
+        audit_pii_values=benchmark_pii_values,
     )
 
     crew = build_crew(
@@ -290,12 +292,21 @@ def run_crew(
         latest_receipt = egress_gateway.inspect_and_transmit(
             payload=inspected_str,
             ground_truth_pii=raw_pii_values,
+            audit_pii_values=benchmark_pii_values,
             destination="example-external-api",
         )
 
     privacy_telemetry["egress_receipt"] = latest_receipt.to_dict()
-    privacy_telemetry["leakage_rate_pct"] = latest_receipt.leakage_rate_pct
-    privacy_telemetry["status"] = "SAFE" if latest_receipt.decision == "ALLOWED" else "LEAKAGE_DETECTED"
+    privacy_telemetry["leakage_rate_pct"] = latest_receipt.attempted_leakage_rate_pct
+    privacy_telemetry["attempted_pii_count"] = latest_receipt.attempted_pii_count
+    privacy_telemetry["transmitted_pii_count"] = latest_receipt.transmitted_pii_count
+    privacy_telemetry["status"] = (
+        "LEAKAGE_DETECTED"
+        if latest_receipt.transmitted_pii_count > 0
+        else "EGRESS_BLOCKED"
+        if latest_receipt.attempted_pii_count > 0
+        else "SAFE"
+    )
     privacy_telemetry["guardrail_intercepted"] = (latest_receipt.decision == "BLOCKED")
     privacy_telemetry["egress_payload"] = latest_receipt.message
 
@@ -484,6 +495,7 @@ def run_hierarchical_crew(
     vector_store: BaseVectorStore | None = None,
     top_k_chunks: int = 3,
     model: str | None = None,
+    benchmark_pii_values: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Build and execute the hierarchical crew with real Python SHA-256 audit hashing
@@ -562,6 +574,7 @@ def run_hierarchical_crew(
     gateway_tool = ExternalAPIGatewayTool(
         gateway=egress_gateway,
         ground_truth_pii=raw_pii_values,
+        audit_pii_values=benchmark_pii_values,
     )
 
     crew = build_hierarchical_crew(
@@ -614,12 +627,21 @@ def run_hierarchical_crew(
         latest_receipt = egress_gateway.inspect_and_transmit(
             payload=inspected_str,
             ground_truth_pii=raw_pii_values,
+            audit_pii_values=benchmark_pii_values,
             destination="example-external-api",
         )
 
     privacy_telemetry["egress_receipt"] = latest_receipt.to_dict()
-    privacy_telemetry["leakage_rate_pct"] = latest_receipt.leakage_rate_pct
-    privacy_telemetry["status"] = "SAFE" if latest_receipt.decision == "ALLOWED" else "LEAKAGE_DETECTED"
+    privacy_telemetry["leakage_rate_pct"] = latest_receipt.attempted_leakage_rate_pct
+    privacy_telemetry["attempted_pii_count"] = latest_receipt.attempted_pii_count
+    privacy_telemetry["transmitted_pii_count"] = latest_receipt.transmitted_pii_count
+    privacy_telemetry["status"] = (
+        "LEAKAGE_DETECTED"
+        if latest_receipt.transmitted_pii_count > 0
+        else "EGRESS_BLOCKED"
+        if latest_receipt.attempted_pii_count > 0
+        else "SAFE"
+    )
     privacy_telemetry["guardrail_intercepted"] = (latest_receipt.decision == "BLOCKED")
     privacy_telemetry["egress_payload"] = latest_receipt.message
 

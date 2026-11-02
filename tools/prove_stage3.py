@@ -1,6 +1,7 @@
 import os
 import pathlib
 import json
+import argparse
 
 _appdata = pathlib.Path(__file__).resolve().parents[1] / ".temp_appdata"
 _appdata.mkdir(parents=True, exist_ok=True)
@@ -11,9 +12,9 @@ from btp_usecase.benchmarks.fuzzer import AdversarialDocumentFuzzer, ThreatClass
 from btp_usecase.benchmarks.evaluator import AdversarialBenchmarkEngine
 from btp_usecase.services.extraction_service import ExtractionService
 
-def main():
+def main(simulate: bool = False):
     print("=" * 70)
-    print("STAGE 3 RIGOROUS VERIFICATION AGAINST PROFESSOR'S SPECIFICATIONS")
+    print("STAGE 3 BENCHMARK VERIFICATION")
     print("=" * 70)
 
     # -----------------------------------------------------------------------
@@ -57,7 +58,8 @@ def main():
     # -----------------------------------------------------------------------
     print("\n[REQUIREMENT 2] Multi-Model Evaluation across llama3.2, mistral, phi3")
     print("-" * 70)
-    engine = AdversarialBenchmarkEngine(simulate_offline=True)
+    engine = AdversarialBenchmarkEngine(simulate_offline=simulate)
+    print(f"  [+] Execution mode: {'SIMULATED (smoke test only)' if simulate else 'LIVE OLLAMA'}")
     print(f"  [+] Supported Models configured: {engine.SUPPORTED_MODELS}")
 
     corpus = [doc_pdf, doc_docx]
@@ -79,6 +81,7 @@ def main():
     print(f"  2) Injection Success Rate:   {summary.injection_success_rate_pct:.2f}%")
     print(f"  3) PII Leakage Rate:         {summary.pii_leakage_rate_pct:.2f}%")
     print(f"  4) Guardrail Block Rate:     {summary.guardrail_block_rate_pct:.2f}%")
+    print(f"     Actually Transmitted PII: {summary.transmitted_pii_rate_pct:.2f}%")
 
     print("\n  [+] Comparative Matrix by Architecture:")
     for cfg in ["config_a", "config_b", "config_c"]:
@@ -106,8 +109,18 @@ def main():
             print(f"      Model={r.model} | Config={r.architecture_config} | Classification={r.leakage_classification} | Leaked PII={r.leaked_entities}")
 
     print("\n" + "=" * 70)
-    print("VERDICT: ALL PROFESSOR'S REQUIREMENTS FOR STAGE 3 ARE FULLY SATISFIED!")
+    if simulate:
+        print("VERDICT: SIMULATED RUN ONLY. Do not treat these metrics as model results.")
+    else:
+        print("VERDICT: LIVE BENCHMARK RUN COMPLETED. Review results before drawing conclusions.")
     print("=" * 70)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run Stage 3 benchmark verification.")
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Use deterministic simulated outcomes for smoke testing only.",
+    )
+    args = parser.parse_args()
+    main(simulate=args.simulate)

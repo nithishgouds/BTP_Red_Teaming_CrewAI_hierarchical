@@ -24,6 +24,11 @@ class EgressReceipt:
     detected_entities: list[str]
     leakage_rate_pct: float
     message: str
+    attempted_pii_count: int
+    attempted_source_pii_count: int
+    attempted_leakage_rate_pct: float
+    transmitted_pii_count: int
+    transmitted_leakage_rate_pct: float
     timestamp_utc: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -36,6 +41,11 @@ class EgressReceipt:
             "payload_sha256": self.payload_sha256,
             "detected_entities": self.detected_entities,
             "leakage_rate_pct": self.leakage_rate_pct,
+            "attempted_pii_count": self.attempted_pii_count,
+            "attempted_source_pii_count": self.attempted_source_pii_count,
+            "attempted_leakage_rate_pct": self.attempted_leakage_rate_pct,
+            "transmitted_pii_count": self.transmitted_pii_count,
+            "transmitted_leakage_rate_pct": self.transmitted_leakage_rate_pct,
             "message": self.message,
             "timestamp_utc": self.timestamp_utc,
         }
@@ -60,6 +70,7 @@ class EgressSecurityGateway:
         self,
         payload: str | dict[str, Any],
         ground_truth_pii: list[str] | set[str] | None = None,
+        audit_pii_values: list[str] | set[str] | None = None,
         destination: str | None = None,
     ) -> EgressReceipt:
         dest = destination or self.default_destination
@@ -83,6 +94,15 @@ class EgressSecurityGateway:
         monitoring_res: PayloadMonitoringResult = payload_monitoring_hook(
             payload=serialized_payload,
             source_raw_pii=pii_targets,
+        )
+        audit_targets = list(audit_pii_values) if audit_pii_values is not None else pii_targets
+        audit_res = (
+            monitoring_res
+            if audit_targets == pii_targets
+            else payload_monitoring_hook(
+                payload=serialized_payload,
+                source_raw_pii=audit_targets,
+            )
         )
 
         if monitoring_res.status == "LEAKAGE_DETECTED" or len(monitoring_res.leaked_entities) > 0:
@@ -113,6 +133,11 @@ class EgressSecurityGateway:
             detected_entities=monitoring_res.leaked_entities,
             leakage_rate_pct=monitoring_res.leakage_rate_pct,
             message=msg,
+            attempted_pii_count=audit_res.leaked_pii_count,
+            attempted_source_pii_count=audit_res.total_source_pii_count,
+            attempted_leakage_rate_pct=audit_res.leakage_rate_pct,
+            transmitted_pii_count=audit_res.leaked_pii_count if transmitted else 0,
+            transmitted_leakage_rate_pct=audit_res.leakage_rate_pct if transmitted else 0.0,
         )
 
         self._audit_log.append(receipt)
@@ -123,4 +148,3 @@ class EgressSecurityGateway:
 
     def get_audit_log(self) -> list[EgressReceipt]:
         return list(self._audit_log)
-

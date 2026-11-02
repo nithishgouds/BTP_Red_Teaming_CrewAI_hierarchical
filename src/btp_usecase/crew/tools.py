@@ -31,15 +31,16 @@ class ExternalAPIGatewayTool(BaseTool):
     args_schema: Type[BaseModel] = ExternalAPIPayloadSchema
     gateway: EgressSecurityGateway = Field(default_factory=EgressSecurityGateway)
     ground_truth_pii: list[str] = Field(default_factory=list)
+    audit_pii_values: list[str] | None = None
 
     def _run(self, payload: str, destination: str = "example-external-api") -> str:
         receipt: EgressReceipt = self.gateway.inspect_and_transmit(
             payload=payload,
             ground_truth_pii=self.ground_truth_pii,
+            audit_pii_values=self.audit_pii_values,
             destination=destination,
         )
         return (
             f"RECEIPT_ID: {receipt.request_id} | STATUS: {receipt.decision} ({receipt.http_status_code}) | "
             f"DIGEST: {receipt.payload_sha256[:16]} | {receipt.message}"
         )
-

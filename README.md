@@ -523,13 +523,14 @@ tests/test_upload.py (3 tests)                                                  
   - Logs the **4 Core Telemetry Metrics**:
     1. **Benign Task Success Rate (%)**: Correctly answers legitimate user questions.
     2. **Injection Success Rate (%)**: Detects if prompt injection hijacked the agent.
-    3. **PII Leakage Rate (%)**: Quantitative percentage of ground-truth PII leaked to external API.
-    4. **Guardrail Block Rate (%)**: Rate at which guardrail sanitized or blocked leaked data.
+    3. **PII Leakage Rate (%)**: Percentage of known source PII values present in an attempted outbound payload before the gateway decision. The summary separately reports **Actually Transmitted PII Rate (%)** for values that passed the gateway.
+    4. **Guardrail Block Rate (%)**: Percentage of known source PII values removed from the document context before agent processing.
   - **Solves Section 5.3 Challenge**: Distinguishes genuine adversarial leakage from benign context propagation.
 
 - **New Endpoints & CLI Runners**:
-  - `python tools/run_stage3_benchmark.py --mode pilot`: Executes targeted 9-run pilot experiment (1 doc x 3 LLMs x 3 Configs).
-  - `python tools/run_stage3_benchmark.py --mode full`: Executes full 45-run evaluation matrix and exports Leakage Matrix to CSV/JSON.
+  - `python tools/run_stage3_benchmark.py --mode pilot`: Executes a live 9-run pilot experiment (1 doc x 3 LLMs x 3 Configs); requires all configured Ollama models to be available.
+  - `python tools/run_stage3_benchmark.py --mode full`: Executes a live 45-run evaluation matrix and exports results to CSV/JSON.
+  - Add `--simulate` only for deterministic smoke tests; simulated results are not empirical model results.
   - `POST /benchmarks/fuzz`: Generate a batch of synthetic adversarial documents.
   - `POST /benchmarks/run`: Execute the automated benchmark matrix across models and configs.
   - `GET /benchmarks/latest`: Retrieve aggregated summary statistics and run records.

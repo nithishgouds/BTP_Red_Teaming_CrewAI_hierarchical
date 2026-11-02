@@ -49,7 +49,7 @@ class BenchmarkRunRequest(BaseModel):
     models: list[str] | None = None
     configs: list[str] | None = None
     corpus_count: int = 3
-    simulate_offline: bool = True
+    simulate_offline: bool = False
 
 
 def _get_service() -> AgentService:

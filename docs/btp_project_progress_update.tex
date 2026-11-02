@@ -1,0 +1,142 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\definecolor{primaryblue}{RGB}{24,76,120}
+\definecolor{neutraldark}{RGB}{35,39,42}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primaryblue,
+    urlcolor=primaryblue,
+    pdftitle={BTP Project Progress Update},
+    pdfauthor={G Santhosh Reddy, G Vamsi Krishna, S Sri Nithish}
+}
+
+\setlist[itemize]{leftmargin=1.5em,itemsep=3pt,topsep=4pt}
+\setlist[enumerate]{leftmargin=1.7em,itemsep=3pt,topsep=4pt}
+
+\begin{document}
+
+\begin{center}
+    {\Large\bfseries\color{primaryblue} BTP Phase II: Project Progress Update}\\[5pt]
+    {\large Privacy Red-Teaming for Unstructured Data in Multi-Agent Systems}\\[8pt]
+    {\normalsize Indian Institute of Technology Tirupati \textbar\
+    Department of Computer Science and Engineering}\\[4pt]
+    {\normalsize 2 November 2026}
+\end{center}
+
+\vspace{8pt}
+\noindent\textbf{Project team:}
+G Santhosh Reddy (CS23B022), G Vamsi Krishna (CS23B023), and
+S Sri Nithish (CS23B052).
+
+\section{Executive Summary}
+
+We have implemented a working software prototype for studying privacy risks
+when multi-agent systems process unstructured documents. The prototype includes
+document ingestion, PII detection and redaction, persistent chunk retrieval,
+sequential and hierarchical agent workflows, and an adversarial benchmark
+harness. The current automated test suite passes \textbf{74 tests}.
+
+The benchmark generator and evaluation pipeline are implemented, but a live
+evaluation using Ollama models has not yet been completed. Accordingly, this
+update reports implementation and test status only; it does not claim empirical
+LLM performance or measured leakage reduction.
+
+\section{Work Completed}
+
+\begin{description}[leftmargin=0pt,labelindent=0pt,style=nextline]
+    \item[\textcolor{primaryblue}{Document ingestion and extraction}]
+    A FastAPI application accepts documents and supports text extraction from
+    PDF, DOCX, and TXT files. Uploaded documents can be stored locally and
+    passed into the agent workflow.
+
+    \item[\textcolor{primaryblue}{PII privacy controls}]
+    The privacy guardrail combines Presidio-based analysis, when available,
+    with regular-expression detection. It supports redaction, risk scoring,
+    and before/after telemetry. A separate egress gateway inspects outbound
+    payloads and records its decision and receipt, distinguishing attempted
+    PII exposure from PII allowed past that gateway.
+
+    \item[\textcolor{primaryblue}{Persistent retrieval and data-flow auditing}]
+    ChromaDB-backed vector storage supports document chunking and semantic
+    retrieval. A chunk-flow auditor records which workflow roles handle
+    chunks and checks whether chunks reaching the analyst passed through the
+    privacy-redaction step.
+
+    \item[\textcolor{primaryblue}{Multi-agent workflows}]
+    The application supports both a sequential CrewAI workflow and a
+    hierarchical workflow with a supervisor audit step. Guardrail-enabled
+    execution and a sequential-versus-hierarchical comparison endpoint are
+    also available.
+
+    \item[\textcolor{primaryblue}{Adversarial benchmark infrastructure}]
+    A seeded fuzzer generates synthetic documents in PDF, DOCX, and TXT
+    formats across four example domains: HR, finance, medical, and legal.
+    It covers five indirect-injection threat classes: context hijacking,
+    selective exfiltration, delimiter smuggling, role confusion, and encoded
+    payloads. The evaluator is configured for three Ollama models
+    (\texttt{llama3.2}, \texttt{mistral}, and \texttt{phi3}) and three
+    architecture configurations (baseline, guardrail-enabled, and
+    defense-in-depth).
+
+    \item[\textcolor{primaryblue}{Benchmark telemetry and access}]
+    The evaluation pipeline records benign-task success, injection success,
+    attempted PII exposure, and guardrail redaction. Gateway receipts separately
+    capture whether an attempted payload was allowed and how much PII was
+    transmitted. API endpoints and a command-line runner are available to
+    generate corpora, execute runs, and save result summaries.
+\end{description}
+
+\section{Verification and Current Status}
+
+On 2 November 2026, the project test suite was run with
+\texttt{uv run pytest -q}: \textbf{74 passed}. The tests cover core workflows,
+document extraction, privacy controls, storage, and benchmark generation and
+evaluation logic. The benchmark tests use deterministic offline simulation for
+repeatable checks; simulated outputs are not evidence of live model behavior.
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+\textbf{Area} & \textbf{Status} \\
+\midrule
+Document processing and agent workflows & Implemented and covered by automated tests \\
+PII guardrail, egress inspection, and retrieval auditing & Implemented and covered by automated tests \\
+Adversarial corpus generation and evaluation tooling & Implemented; live model validation pending \\
+Live Ollama benchmark results & Pending; no empirical results are reported here \\
+Expanded repeated evaluation and final analysis & Next work \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Next Steps}
+
+\begin{enumerate}
+    \item Confirm that the configured Ollama models are available and run a
+    live pilot across the three models and three architecture configurations.
+    \item Review the resulting run records, including attempted exposure,
+    gateway decisions, transmitted PII, and guardrail redaction, before
+    drawing conclusions.
+    \item Execute the full threat-class matrix with repeated samples, then
+    analyze the outcomes and relevant performance trade-offs.
+    \item Incorporate validated results into the final project report and
+    demonstration.
+\end{enumerate}
+
+\vfill
+\noindent\textit{\color{neutraldark}This is a separate progress update;
+no edits to the existing Stage 3 report were made for this update.}
+
+\end{document}

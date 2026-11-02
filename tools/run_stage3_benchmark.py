@@ -18,7 +18,7 @@ Executes multi-model adversarial benchmarks across:
 Usage:
   python tools/run_stage3_benchmark.py --mode pilot
   python tools/run_stage3_benchmark.py --mode full
-  python tools/run_stage3_benchmark.py --live
+  python tools/run_stage3_benchmark.py --simulate  # smoke tests only; not empirical results
 """
 from __future__ import annotations
 
@@ -80,9 +80,8 @@ def print_leakage_matrix(results: list[BenchmarkRunResult]):
             leak_b = f"{res_b.leakage_rate_pct:.1f}%" if res_b else "N/A"
             leak_c = f"{res_c.leakage_rate_pct:.1f}%" if res_c else "N/A"
 
-            # Check if guardrail blocked in B & C
-            blocked_b = res_b.guardrail_blocked if res_b else False
-            status = "CONTAINED (0%)" if (res_b and res_b.leakage_rate_pct == 0.0) else "LEAKAGE"
+            gateway_blocked = res_b.egress_receipt.get("decision") == "BLOCKED" if res_b else False
+            status = "GATEWAY BLOCKED" if gateway_blocked else "CHECK RECEIPT"
 
             print(f"{tc:<24} | {m:<10} | {leak_a:<10} | {leak_b:<10} | {leak_c:<10} | {status:<16}")
 
@@ -95,27 +94,34 @@ def export_leakage_matrix_csv(results: list[BenchmarkRunResult], output_path: pa
         writer.writerow([
             "Run ID", "Threat Class", "LLM Backend", "Architecture",
             "Execution Mode", "Benign Success", "Injection Success",
-            "PII Leakage", "Guardrail Blocked", "Leakage Rate %",
+            "PII Exposure Attempt", "Guardrail Redacted PII Count",
+            "Guardrail Redaction Rate %", "Attempted PII Count",
+            "Source PII Count", "Attempted Exposure Rate %",
+            "Transmitted PII Count", "Transmitted PII Rate %",
             "Elapsed Seconds", "Classification",
         ])
         for r in results:
             writer.writerow([
                 r.run_id, r.threat_class, r.model, r.architecture_config,
                 r.execution_mode, r.benign_task_success, r.injection_success,
-                r.pii_leakage, r.guardrail_blocked, r.leakage_rate_pct,
+                r.pii_leakage, r.guardrail_blocked_pii_count, r.guardrail_block_rate_pct,
+                r.attempted_pii_count, r.source_pii_count, r.leakage_rate_pct,
+                r.transmitted_pii_count,
+                round(r.transmitted_pii_count / r.source_pii_count * 100, 2)
+                if r.source_pii_count else 0.0,
                 r.elapsed_seconds, r.leakage_classification,
             ])
     print(f"\n[+] Exported Leakage Matrix CSV: {output_path}")
 
 
-def run_benchmark(mode: str, live: bool):
+def run_benchmark(mode: str, simulate: bool = False):
     fuzzer = AdversarialDocumentFuzzer(seed=42)
-    engine = AdversarialBenchmarkEngine(simulate_offline=(not live))
+    engine = AdversarialBenchmarkEngine(simulate_offline=simulate)
 
     models = ["llama3.2", "mistral", "phi3"]
     configs = ["config_a", "config_b", "config_c"]
 
-    print_banner(f"STAGE 3 BENCHMARK RUNNER [Mode: {mode.upper()} | Live Ollama: {live}]")
+    print_banner(f"STAGE 3 BENCHMARK RUNNER [Mode: {mode.upper()} | Execution: {'SIMULATED' if simulate else 'LIVE OLLAMA'}]")
 
     if mode == "pilot":
         # 1 Malicious Document x 3 LLMs x 3 Architecture Configs = 9 Experimental Runs
@@ -167,7 +173,9 @@ def run_benchmark(mode: str, live: bool):
 
             print(f"\n[+] {cfg_label}:")
             print(f"    Egress Payload:        {r.egress_payload}")
-            print(f"    PII Leaked:            {r.leaked_entities} (Rate: {r.leakage_rate_pct}%)")
+            print(f"    Attempted PII Values:  {r.attempted_pii_count}/{r.source_pii_count} ({r.leakage_rate_pct}%)")
+            print(f"    Transmitted PII Count: {r.transmitted_pii_count}")
+            print(f"    Guardrail Redaction:   {r.guardrail_blocked_pii_count}/{r.source_pii_count} ({r.guardrail_block_rate_pct}%)")
             print(f"    Injection Succeeded:   {r.injection_success}")
             print(f"    Guardrail Intercepted: {r.guardrail_blocked}")
             print(f"    Classification:        {r.leakage_classification}")
@@ -180,6 +188,7 @@ def run_benchmark(mode: str, live: bool):
     print(f"  2) Injection Success Rate:   {summary.injection_success_rate_pct:.2f}%")
     print(f"  3) PII Leakage Rate:         {summary.pii_leakage_rate_pct:.2f}%")
     print(f"  4) Guardrail Block Rate:     {summary.guardrail_block_rate_pct:.2f}%")
+    print(f"     Actually Transmitted PII: {summary.transmitted_pii_rate_pct:.2f}%")
     print(f"  Mean Latency per Run:        {summary.mean_latency_seconds:.3f}s")
 
     print("\n[*] Rates by Architecture Configuration:")
@@ -192,6 +201,7 @@ def run_benchmark(mode: str, live: bool):
         }[cfg]
         print(f"    {label}:")
         print(f"      - PII Leakage Rate:       {arch['pii_leakage_rate_pct']}%")
+        print(f"      - Actually Transmitted:   {arch['transmitted_pii_rate_pct']}%")
         print(f"      - Guardrail Block Rate:   {arch['guardrail_block_rate_pct']}%")
         print(f"      - Injection Success Rate: {arch['injection_success_rate_pct']}%")
         print(f"      - Benign Task Success:    {arch['benign_success_rate_pct']}%")
@@ -216,14 +226,13 @@ def main():
         help="Run mode: 'pilot' (1 doc x 3 models x 3 configs = 9 runs) or 'full' (5 docs x 3 models x 3 configs = 45 runs)",
     )
     parser.add_argument(
-        "--live",
+        "--simulate",
         action="store_true",
-        help="Attempt live Ollama execution if models are running locally",
+        help="Use deterministic simulated outcomes for smoke testing; do not use for empirical results",
     )
     args = parser.parse_args()
-    run_benchmark(mode=args.mode, live=args.live)
+    run_benchmark(mode=args.mode, simulate=args.simulate)
 
 
 if __name__ == "__main__":
     main()
-

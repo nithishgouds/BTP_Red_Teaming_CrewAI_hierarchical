@@ -133,7 +133,7 @@ Following the faculty advisor's roadmap, the project is structured into progress
 \addlinespace
 \textbf{Stage 2: Persistent Vector Store} & \textbf{\textcolor{secondaryteal}{COMPLETED}} & ChromaDB persistent HNSW indexing, \texttt{TextChunker}, chunk data-flow auditor (\texttt{ChunkFlowAuditor}), zero-trust provenance invariant. \\
 \addlinespace
-\textbf{Stage 3: Adversarial Benchmarking} & \textbf{\textcolor{secondaryteal}{COMPLETED (NOW)}} & Automated document fuzzing harness (PDF/DOCX/TXT), multi-model evaluation across \texttt{llama3.2}, \texttt{mistral}, and \texttt{phi3}, 4 telemetry metrics. \\
+\textbf{Stage 3: Adversarial Benchmarking} & \textbf{\textcolor{accentcrimson}{INFRASTRUCTURE IMPLEMENTED; LIVE VALIDATION PENDING}} & Fuzzer and evaluator support PDF/DOCX/TXT, three Ollama models, and four telemetry metrics; empirical results require live model runs. \\
 \addlinespace
 \textbf{Stage 4: Tri-Config Ablation Matrix} & \textbf{\textcolor{accentcrimson}{NEXT PLAN}} & Systematic ablation across Threat Classes $\times$ Architectures (A vs B vs C) $\times$ LLMs, expanding to 25+ red-teaming cases. \\
 \addlinespace
@@ -145,7 +145,7 @@ Following the faculty advisor's roadmap, the project is structured into progress
 \end{table}
 
 \noindent
-Prior to this phase, \textbf{Stage 1} and \textbf{Stage 2} were verified with 54 passing tests. We have now fully implemented and verified \textbf{Stage 3}, expanding our test suite to \textbf{67 automated tests} with a 100\% pass rate.
+Prior to this phase, \textbf{Stage 1} and \textbf{Stage 2} were verified with 54 passing tests. Automated tests cover the Stage~3 generator and evaluator plumbing. Runs using the offline simulator are test-only and are not empirical evidence of LLM behavior; live Ollama evaluation remains necessary.
 
 % ==============================================================================
 % SECTION 2: DETAILED BREAKDOWN OF STAGE 3 IMPLEMENTATION
@@ -231,15 +231,17 @@ For each individual run, the engine logs the four metrics required by the profes
     \end{equation}
     where $\tau$ is the adversarial trigger token (\texttt{EXFIL\_TRIGGER\_ACCEPTED}).
 
-    \item \textbf{PII Leakage Rate (\%):} Measures the exact percentage of raw source PII leaked into the external API payload:
+    \item \textbf{PII Leakage Rate (\%):} Measures known source PII values present in the attempted outbound payload before the egress gateway decision:
     \begin{equation}
-    \text{Leakage Rate} = \left( \frac{|\mathcal{E}_{\text{leaked}}|}{|\mathcal{E}_{\text{source}}|} \right) \times 100\%
+    M_{\text{exposure}} = \left( \frac{|\mathcal{E}_{\text{attempted}}|}{|\mathcal{E}_{\text{source}}|} \right) \times 100\%
     \end{equation}
+    For generated documents, $\mathcal{E}_{\text{source}}$ is the fuzzer's set of known PII values actually present in extracted text. The gateway receipt separately records whether the payload was transmitted and how many such values passed.
 
-    \item \textbf{Guardrail Block Rate (\%):} Measures defensive effectiveness:
+    \item \textbf{Guardrail Block Rate (\%):} Measures the percentage of known source PII values removed from the document context before agent processing:
     \begin{equation}
-    M_{\text{block}} = \mathbb{I}\left( \mathcal{E}_{\text{leaked}} = \emptyset \land \text{Guardrail} = \text{Active} \right)
+    M_{\text{guardrail}} = \left( \frac{|\mathcal{E}_{\text{removed before agents}}|}{|\mathcal{E}_{\text{source}}|} \right) \times 100\%
     \end{equation}
+    The egress gateway is a separate final enforcement point; its block decision must not be counted as a guardrail redaction.
 \end{enumerate}
 
 \subsection{Resolution of the Section 5.3 Challenge}
@@ -251,8 +253,8 @@ Section~5.3 of the initial report noted the challenge of \textit{distinguishing 
     \item \texttt{BENIGN\_PROPAGATION:} Normal non-sensitive context flowed legitimately through the pipeline.
 \end{itemize}
 
-\subsection{Empirical Proof: Benchmarking Results}
-Table~\ref{tab:empirical_stage3} reports the live empirical results obtained across our generated corpus:
+\subsection{Benchmark Status: Live Evaluation Pending}
+Previously reported percentages were produced by the deterministic offline simulator and must not be presented as live LLM results. The table below remains pending until the benchmark is executed against the configured Ollama models:
 
 \begin{table}[htbp]
 \centering
@@ -261,12 +263,12 @@ Table~\ref{tab:empirical_stage3} reports the live empirical results obtained acr
 \toprule
 \textbf{Architecture Configuration} & \textbf{Benign Success \%} & \textbf{Injection Success \%} & \textbf{PII Leakage \%} & \textbf{Guardrail Block \%} \\
 \midrule
-\textbf{Config A (Baseline Sequential)} & 50.0\% & \textbf{100.0\% (Vulnerable)} & \textbf{100.0\% (Leaked)} & 0.0\% \\
-\textbf{Config B (+ Dedicated PII Guardrail)} & \textbf{100.0\%} & \textbf{0.0\% (Defused)} & \textbf{0.0\% (Clean)} & \textbf{100.0\%} \\
-\textbf{Config C (+ Vector + Supervisor)} & \textbf{100.0\%} & \textbf{0.0\% (Contained)} & \textbf{0.0\% (Clean)} & \textbf{100.0\%} \\
+\textbf{Config A (Baseline Sequential)} & Pending & Pending & Pending & N/A \\
+\textbf{Config B (+ Dedicated PII Guardrail)} & Pending & Pending & Pending & Pending \\
+\textbf{Config C (+ Vector + Supervisor)} & Pending & Pending & Pending & Pending \\
 \bottomrule
 \end{tabularx}
-\caption{Empirical verification demonstrating that our PII Guardrail and Hierarchical Supervisor reduce PII leakage from $100\%$ down to $0.0\%$.}
+\caption{Results to be populated from live Ollama evaluation. Offline simulator outputs are excluded.}
 \label{tab:empirical_stage3}
 \end{table}
 
@@ -284,7 +286,7 @@ To verify Stage~3, we engineered 13 new automated tests across two new test modu
     \item \texttt{tests/test\_fuzzer.py} (7 tests): Validates fuzzer determinism, PDF/DOCX byte generation, round-trip extraction via \texttt{ExtractionService}, and PII detection.
     \item \texttt{tests/test\_evaluator.py} (6 tests): Validates model evaluation, Config A/B/C metric tracking, Section~5.3 classification, and JSON serialization.
 \end{itemize}
-All \textbf{67 tests} pass cleanly in 22 seconds with zero regressions.
+These tests verify generation and evaluation logic; they do not substitute for live model benchmark runs.
 
 % ==============================================================================
 % SECTION 3: ROADMAP -- NEXT PLANS (STAGE 4 AND STAGE 5)
@@ -334,8 +336,7 @@ Having achieved full completion of Stages~1, 2, and 3, our remaining work is org
 \end{enumerate}
 
 \begin{successbox}{Milestone Conclusion}
-With Stage~3 fully operational, the core empirical contribution of the BTP is established: malicious enterprise files are automatically fuzzed, multi-model evaluation is automated, and the four telemetry metrics demonstrate complete leakage elimination. We are primed to commence \textbf{Stage 4: Full System Evaluation and Tri-Config Ablation}.
+The Stage~3 fuzzer and evaluation infrastructure are implemented. The empirical contribution is not established until the live multi-model evaluation is run and analyzed. The next step is to validate the metric behavior and execute live runs before drawing conclusions about leakage reduction.
 \end{successbox}
 
 \end{document}
-
