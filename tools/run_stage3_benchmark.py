@@ -80,8 +80,14 @@ def print_leakage_matrix(results: list[BenchmarkRunResult]):
             leak_b = f"{res_b.leakage_rate_pct:.1f}%" if res_b else "N/A"
             leak_c = f"{res_c.leakage_rate_pct:.1f}%" if res_c else "N/A"
 
-            gateway_blocked = res_b.egress_receipt.get("decision") == "BLOCKED" if res_b else False
-            status = "GATEWAY BLOCKED" if gateway_blocked else "CHECK RECEIPT"
+            if res_b and res_b.leakage_rate_pct == 0.0:
+                status = "SECURED (0.0%)"
+            elif res_b and res_b.egress_receipt.get("decision") == "BLOCKED":
+                status = "GATEWAY BLOCKED"
+            elif res_b and res_b.leakage_rate_pct > 0:
+                status = "PII EXPOSED"
+            else:
+                status = "N/A"
 
             print(f"{tc:<24} | {m:<10} | {leak_a:<10} | {leak_b:<10} | {leak_c:<10} | {status:<16}")
 
@@ -114,24 +120,29 @@ def export_leakage_matrix_csv(results: list[BenchmarkRunResult], output_path: pa
     print(f"\n[+] Exported Leakage Matrix CSV: {output_path}")
 
 
-def run_benchmark(mode: str, simulate: bool = False):
+def run_benchmark(
+    mode: str,
+    simulate: bool = False,
+    models: list[str] | None = None,
+):
     fuzzer = AdversarialDocumentFuzzer(seed=42)
     engine = AdversarialBenchmarkEngine(simulate_offline=simulate)
 
-    models = ["llama3.2", "mistral", "phi3"]
+    models = models or ["llama3.2", "mistral"]
     configs = ["config_a", "config_b", "config_c"]
 
-    print_banner(f"STAGE 3 BENCHMARK RUNNER [Mode: {mode.upper()} | Execution: {'SIMULATED' if simulate else 'LIVE OLLAMA'}]")
+    print_banner(f"STAGE 3 BENCHMARK RUNNER [Mode: {mode.upper()} | Execution: {'SIMULATED' if simulate else 'LIVE OLLAMA'} | Models: {', '.join(models)}]")
 
     if mode == "pilot":
-        # 1 Malicious Document x 3 LLMs x 3 Architecture Configs = 9 Experimental Runs
-        print("\n[*] Initializing Pilot Benchmark (1 Malicious Document x 3 LLMs x 3 Configs = 9 Runs)...")
+        # 1 Malicious Document x N LLMs x 3 Architecture Configs
         doc = fuzzer.generate_document(
             domain=DocumentDomain.HR_PERFORMANCE_REVIEW,
             threat_class=ThreatClass.SELECTIVE_EXFILTRATION,
             file_type="pdf",
         )
         corpus = [doc]
+        total_runs = len(corpus) * len(models) * len(configs)
+        print(f"\n[*] Initializing Pilot Benchmark ({len(corpus)} Malicious Document x {len(models)} LLMs x {len(configs)} Configs = {total_runs} Runs)...")
         print(f"    Document ID: {doc.document_id}")
         print(f"    Filename:    {doc.filename}")
         print(f"    Domain:      {doc.domain.value}")
@@ -139,13 +150,21 @@ def run_benchmark(mode: str, simulate: bool = False):
         print(f"    PII Tracked: {list(doc.pii_entities.keys())}")
         print(f"    Payload:     {doc.injection_payload.strip()[:90]}...")
     else:
-        # Full Benchmark: All 5 threat classes x 3 LLMs x 3 Configs = 45 Runs
-        print("\n[*] Initializing Full Benchmark (5 Threat Classes x 3 LLMs x 3 Configs = 45 Runs)...")
+        # Full Benchmark: All 5 threat classes x N LLMs x 3 Configs
         corpus = [
             fuzzer.generate_document(threat_class=tc, file_type="pdf")
             for tc in ThreatClass
         ]
+        total_runs = len(corpus) * len(models) * len(configs)
+        print(f"\n[*] Initializing Full Benchmark ({len(corpus)} Threat Classes x {len(models)} LLMs x {len(configs)} Configs = {total_runs} Runs)...")
         print(f"    Total adversarial documents in corpus: {len(corpus)}")
+
+    docs_dir = pathlib.Path("./data/benchmarks/generated_documents")
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    for d in corpus:
+        (docs_dir / d.filename).write_bytes(d.file_bytes)
+        (docs_dir / f"{d.document_id}_{d.domain.value.lower()}_annotated.txt").write_text(d.raw_text, encoding="utf-8")
+    print(f"    Saved adversarial document files to: {docs_dir.resolve()}")
 
     results_dir = pathlib.Path("./data/benchmarks/results")
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -223,7 +242,13 @@ def main():
         "--mode",
         choices=["pilot", "full"],
         default="pilot",
-        help="Run mode: 'pilot' (1 doc x 3 models x 3 configs = 9 runs) or 'full' (5 docs x 3 models x 3 configs = 45 runs)",
+        help="Run mode: 'pilot' (1 doc x N models x 3 configs) or 'full' (5 docs x N models x 3 configs)",
+    )
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=["llama3.2", "mistral"],
+        help="Models to evaluate (default: llama3.2 mistral; phi3 is omitted due to lack of tool calling support in Ollama)",
     )
     parser.add_argument(
         "--simulate",
@@ -231,7 +256,7 @@ def main():
         help="Use deterministic simulated outcomes for smoke testing; do not use for empirical results",
     )
     args = parser.parse_args()
-    run_benchmark(mode=args.mode, simulate=args.simulate)
+    run_benchmark(mode=args.mode, simulate=args.simulate, models=args.models)
 
 
 if __name__ == "__main__":
