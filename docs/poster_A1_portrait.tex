@@ -2,17 +2,12 @@
 %  IIT Tirupati -- B.Tech Project (BTP) Poster
 %  Size: A1 portrait (594 mm x 841 mm)
 %  Theme: IIT Tirupati Maroon
-%  Sections follow official evaluation rubrics:
-%    1 The Challenge   2 Input -> System -> 3 Output
-%    Methodology & Architecture   4 Toughest Problems Solved
-%    5 Critical Challenges   Results & Analysis   6 Positioning vs Existing Work
-%    7 Key Learnings   Conclusion & Future Work   Footer
-%  Compile: pdflatex poster_A1_portrait.tex  (Overleaf: pdfLaTeX)
+%  Strict 1-Page Layout Guaranteed
 % =====================================================================
 \documentclass{article}
 
 % ---------- Page size: A1 portrait ----------
-\usepackage[paperwidth=594mm,paperheight=841mm,margin=14mm]{geometry}
+\usepackage[paperwidth=594mm,paperheight=841mm,margin=13mm]{geometry}
 
 % ---------- Fonts ----------
 \usepackage[T1]{fontenc}
@@ -29,11 +24,11 @@
 \usepackage{amsmath}
 \usepackage{pifont}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,backgrounds,fit,calc}
 \usepackage[hidelinks]{hyperref}
 \pagestyle{empty}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{0.28em}
+\setlength{\parskip}{0.22em}
 
 % ---------- IIT Tirupati colours ----------
 \definecolor{iitmaroon}{HTML}{800000}
@@ -44,18 +39,18 @@
 \color{iitdark}
 
 % ---------- Font sizes for A1 (readable from ~1.5 m) ----------
-\newcommand{\bodysize}{\fontsize{18}{24}\selectfont}
-\newcommand{\headsize}{\fontsize{26}{32}\selectfont}
-\newcommand{\titlesize}{\fontsize{45}{54}\selectfont}
-\newcommand{\authorsize}{\fontsize{23}{30}\selectfont}
-\newcommand{\affilsize}{\fontsize{18.5}{24}\selectfont}
-\newcommand{\smallsize}{\fontsize{13.5}{18}\selectfont}
-\newcommand{\bigsize}{\fontsize{22}{28}\selectfont}
+\newcommand{\bodysize}{\fontsize{17.5}{23}\selectfont}
+\newcommand{\headsize}{\fontsize{25}{30}\selectfont}
+\newcommand{\titlesize}{\fontsize{43}{52}\selectfont}
+\newcommand{\authorsize}{\fontsize{22}{28}\selectfont}
+\newcommand{\affilsize}{\fontsize{18}{23}\selectfont}
+\newcommand{\smallsize}{\fontsize{13}{17}\selectfont}
+\newcommand{\bigsize}{\fontsize{21}{26}\selectfont}
 
 % ---------- Lists ----------
-\setlist[itemize]{leftmargin=1.1em, itemsep=0.15em, topsep=0.12em,
-  label={\color{iitmaroon}\rule[0.2em]{0.38em}{0.38em}}}
-\setlist[enumerate]{leftmargin=1.3em, itemsep=0.15em, topsep=0.12em,
+\setlist[itemize]{leftmargin=1.1em, itemsep=0.12em, topsep=0.1em,
+  label={\color{iitmaroon}\rule[0.2em]{0.36em}{0.36em}}}
+\setlist[enumerate]{leftmargin=1.3em, itemsep=0.12em, topsep=0.1em,
   label={\color{iitmaroon}\bfseries\arabic*.}}
 
 % ---------- Section box with a numbered badge ----------
@@ -66,20 +61,20 @@
 
 \newtcolorbox{posterblock}[3][]{%
   enhanced, colback=white, colframe=iitmaroon,
-  boxrule=1.6pt, arc=4pt,
-  left=12pt, right=12pt, top=7pt, bottom=8pt,
-  toptitle=6pt, bottomtitle=6pt, lefttitle=12pt,
+  boxrule=1.5pt, arc=3.5pt,
+  left=11pt, right=11pt, top=6pt, bottom=7pt,
+  toptitle=5pt, bottomtitle=5pt, lefttitle=11pt,
   coltitle=white, colbacktitle=iitmaroon,
   fonttitle=\headsize\bfseries,
   title={\badge{#2}#3},
-  before skip=0pt, after skip=10pt,
+  before skip=0pt, after skip=8pt,
   fontupper=\bodysize, #1}
 
 % Highlighted statement box
 \newtcolorbox{keybox}{%
   enhanced, colback=iitlight, colframe=iitmaroon,
-  boxrule=0pt, leftrule=6pt, arc=0pt,
-  left=11pt, right=10pt, top=6pt, bottom=6pt,
+  boxrule=0pt, leftrule=5pt, arc=0pt,
+  left=10pt, right=9pt, top=5pt, bottom=5pt,
   fontupper=\bodysize\bfseries}
 
 \newcommand{\figcaption}[1]{{\smallsize\color{iitgray}\textbf{Figure:} #1\par}}
@@ -100,41 +95,53 @@
     \includegraphics[width=\linewidth]{iittp_logo.png}%
   }{%
     \begin{tikzpicture}
-      \draw[iitmaroon, line width=2pt, fill=iitlight, rounded corners=6pt] (0,0) rectangle (\linewidth,3.5cm);
-      \node[align=center, text=iitmaroon, font=\bfseries\headsize] at (0.5\linewidth,1.75cm) {IITTP\\LOGO};
+      \draw[iitmaroon, line width=1.8pt, fill=iitlight, rounded corners=5pt] (0,0) rectangle (\linewidth,3.3cm);
+      \node[align=center, text=iitmaroon, font=\bfseries\headsize] at (0.5\linewidth,1.65cm) {IITTP\\LOGO};
     \end{tikzpicture}%
   }
 \end{minipage}%
 \hfill
 \begin{minipage}[c]{0.68\textwidth}
   \centering
-  {\titlesize\bfseries\color{iitmaroon} Red Teaming for Privacy of Unstructured Data in Multi-Agent Systems\\[0.1em]
-   \fontsize{31}{38}\selectfont Architectural Hardening, Inline PII Guardrails and Adversarial Evaluation\par}
-  \vspace{0.3em}
+  {\titlesize\bfseries\color{iitmaroon} Red Teaming for Privacy of Unstructured Data in Multi-Agent Systems\\[0.08em]
+   \fontsize{29}{35}\selectfont Architectural Hardening, Inline PII Guardrails and Adversarial Evaluation\par}
+  \vspace{0.25em}
   {\authorsize\bfseries G Santhosh Reddy (CS23B022) \quad G Vamsi Krishna (CS23B023) \quad S Sri Nithish Goud (CS23B052)\par}
-  \vspace{0.18em}
+  \vspace{0.15em}
   {\affilsize Supervisor: \textbf{Dr. Srinivas Padmanabhuni} (Guest Professor / Adjunct Faculty)\par}
   {\affilsize Department of Computer Science and Engineering, Indian Institute of Technology Tirupati\par}
+      {\smallsize\color{iitgray}\texttt{\{cs23b022, cs23b023, cs23b052\}@iittp.ac.in}\par}
+  
 \end{minipage}%
 \hfill
 \begin{minipage}[c]{0.13\textwidth}
   \centering
-  \begin{tikzpicture}
-    \draw[iitmaroon, line width=1.6pt, fill=iitlight, rounded corners=4pt] (0,0) rectangle (\linewidth,3.5cm);
-    \node[align=center, font=\smallsize\bfseries, text=iitmaroon] at (0.5\linewidth,2.4cm) {B.Tech Project};
-    \node[align=center, font=\smallsize, text=iitdark] at (0.5\linewidth,1.4cm) {48 Live Runs\\74 Tests Pass};
-    \node[align=center, font=\tiny\ttfamily, text=iitgray] at (0.5\linewidth,0.5cm) {CSE IIT Tirupati};
-  \end{tikzpicture}
+  \IfFileExists{docs/github_qr.png}{%
+    \includegraphics[width=\linewidth]{docs/github_qr.png}\\[2pt]
+    {\fontsize{10}{12}\selectfont\bfseries\color{iitmaroon}Scan for Code / Demo}%
+  }{%
+    \IfFileExists{github_qr.png}{%
+      \includegraphics[width=\linewidth]{github_qr.png}\\[2pt]
+      {\fontsize{10}{12}\selectfont\bfseries\color{iitmaroon}Scan for Code / Demo}%
+    }{%
+      \begin{tikzpicture}
+        \draw[iitmaroon, line width=1.5pt, fill=iitlight, rounded corners=4pt] (0,0) rectangle (\linewidth,3.3cm);
+        \node[align=center, font=\smallsize\bfseries, text=iitmaroon] at (0.5\linewidth,2.3cm) {B.Tech Project};
+        \node[align=center, font=\smallsize, text=iitdark] at (0.5\linewidth,1.35cm) {48 Live Runs\\74 Tests Pass};
+        \node[align=center, font=\tiny\ttfamily, text=iitgray] at (0.5\linewidth,0.45cm) {github\_qr.png};
+      \end{tikzpicture}%
+    }%
+  }
 \end{minipage}
 
-\vspace{8pt}
-{\color{iitmaroon}\rule{\textwidth}{3.5pt}}
-\vspace{8pt}
+\vspace{6pt}
+{\color{iitmaroon}\rule{\textwidth}{3pt}}
+\vspace{6pt}
 
 % ======================== 1. THE CHALLENGE ========================
 \begin{posterblock}{1}{The Challenge: Indirect Prompt Injection \& Multi-Agent PII Exposure}
 {\bigsize\bfseries How can collaborative multi-agent LLMs safely process confidential unstructured documents without exposing sensitive PII when adversarial instructions hijack agent reasoning?\par}
-\vspace{0.2em}
+\vspace{0.18em}
 \subhead{Why it matters:} When autonomous agents process enterprise records (HR, finance, medical, legal), embedded indirect instructions manipulate downstream workers into exfiltrating confidential PII (Aadhaar, SSN, salary) via tools. Standard system prompt reminders (\textit{``Do not leak PII''}) fail deterministically against delimiter smuggling. This exposes organizations to critical data theft and compliance liabilities under the \textbf{Indian DPDP Act 2023}.
 \end{posterblock}
 
@@ -142,31 +149,31 @@
 \begin{posterblock}{}{At a Glance: \;\badge{2}Input \;$\rightarrow$\; Layered Privacy Defence Pipeline \;$\rightarrow$\; \badge{3}Output}
 \centering
 \begin{tikzpicture}[
-    box/.style={draw=iitmaroon, line width=1.5pt, rounded corners=5pt,
-      align=left, inner sep=8pt, minimum height=4.5cm, anchor=north west,
+    box/.style={draw=iitmaroon, line width=1.4pt, rounded corners=4pt,
+      align=left, inner sep=7pt, minimum height=4.1cm, anchor=north west,
       font=\bodysize},
-    arrow/.style={-{Triangle[length=13pt,width=15pt]}, line width=4pt, iitmaroon}]
+    arrow/.style={-{Triangle[length=12pt,width=14pt]}, line width=3.8pt, iitmaroon}]
   \node[box, fill=iitlight, text width=0.285\linewidth] (in) at (0,0)
-    {{\headsize\bfseries\color{iitmaroon} \badge{2}INPUT}\\[0.2em]
-     \textbf{Document Types:} PDF / DOCX / TXT\\[0.15em]
-     \textbf{Benign Query:} e.g., \textit{``Summarize review''}\\[0.15em]
-     \textbf{4 Domains:} HR, Finance, Medical, Legal\\[0.15em]
+    {{\headsize\bfseries\color{iitmaroon} \badge{2}INPUT}\\[0.15em]
+     \textbf{Document Types:} PDF / DOCX / TXT\\[0.12em]
+     \textbf{Benign Query:} e.g., \textit{``Summarize review''}\\[0.12em]
+     \textbf{4 Domains:} HR, Finance, Medical, Legal\\[0.12em]
      \textbf{5 Threat Classes:} Delimiter Smuggling, Context Hijacking, Selective Exfiltration, etc.};
   \node[box, fill=iitmaroon, text=white, text width=0.315\linewidth,
         right=1.2cm of in.north east, anchor=north west] (sys)
-    {{\headsize\bfseries 5-STAGE DEFENCE PIPELINE}\\[0.2em]
-     \textbf{1. Storage:} 400-char chunking in ChromaDB\\[0.15em]
-     \textbf{2. Provenance:} \texttt{ChunkFlowAuditor} logging\\[0.15em]
-     \textbf{3. Guardrail:} Presidio + Regex + Luhn check\\[0.15em]
-     \textbf{4. Supervisor:} Hierarchical state fingerprints\\[0.15em]
+    {{\headsize\bfseries 5-STAGE DEFENCE PIPELINE}\\[0.15em]
+     \textbf{1. Storage:} 400-char chunking in ChromaDB\\[0.12em]
+     \textbf{2. Provenance:} \texttt{ChunkFlowAuditor} logging\\[0.12em]
+     \textbf{3. Guardrail:} Presidio + Regex + Luhn check\\[0.12em]
+     \textbf{4. Supervisor:} Hierarchical state fingerprints\\[0.12em]
      \textbf{5. Gateway:} Application-level egress inspection};
   \node[box, fill=iitlight, text width=0.285\linewidth,
         right=1.2cm of sys.north east, anchor=north west] (out)
-    {{\headsize\bfseries\color{iitmaroon} \badge{3}OUTPUT}\\[0.2em]
-     \textbf{Protected Text:} Surrogates (\texttt{<PERSON\_1>})\\[0.15em]
-     \textbf{Pre-Transmission Exposure:} \textbf{0.00\%} (B/C)\\[0.15em]
-     \textbf{Actual Socket Transmission:} \textbf{0.00\%}\\[0.15em]
-     \textbf{Guardrail Redaction Rate:} \textbf{100.00\%}\\[0.15em]
+    {{\headsize\bfseries\color{iitmaroon} \badge{3}OUTPUT}\\[0.15em]
+     \textbf{Protected Text:} Surrogates (\texttt{<PERSON\_1>})\\[0.12em]
+     \textbf{Pre-Transmission Exposure:} \textbf{0.00\%} (B/C)\\[0.12em]
+     \textbf{Actual Socket Transmission:} \textbf{0.00\%}\\[0.12em]
+     \textbf{Guardrail Redaction Rate:} \textbf{100.00\%}\\[0.12em]
      \textbf{Task Utility:} \textbf{93.3\%} benign success};
   \draw[arrow] ([xshift=2pt]in.east) -- ([xshift=-2pt]sys.west);
   \draw[arrow] ([xshift=2pt]sys.east) -- ([xshift=-2pt]out.west);
@@ -178,22 +185,60 @@
 \begin{minipage}[t]{0.57\linewidth}\vspace{0pt}
 \centering
 \begin{tikzpicture}[
-  node distance=0.18cm,
-  st/.style={draw=iitmaroon, rounded corners=3pt, fill=iitlight,
-             minimum height=1.35cm, text width=0.178\linewidth,
-             align=center, inner sep=3pt, font=\fontsize{14.5}{17.5}\selectfont},
-  ar/.style={-{Stealth[length=3mm]}, line width=1.8pt, iitmaroon}]
-  \node[st] (s1) {\textbf{Stage 1: Ingestion}\\400c Chunks + 50c Overlap};
-  \node[st, right=of s1] (s2) {\textbf{Stage 2: Storage}\\ChromaDB + Metadata};
-  \node[st, right=of s2, fill=iitmaroon!20] (s3) {\textbf{Stage 3: Guardrail}\\PII Redactor + Luhn};
-  \node[st, right=of s3] (s4) {\textbf{Stage 4: Supervision}\\Hierarchical Coordination};
-  \node[st, right=of s4] (s5) {\textbf{Stage 5: Gateway}\\Egress Payload Filter};
-  \draw[ar] (s1)--(s2);
-  \draw[ar] (s2)--(s3);
-  \draw[ar] (s3)--(s4);
-  \draw[ar] (s4)--(s5);
+  node distance=0.38cm,
+  st/.style={
+    draw=iitmaroon, line width=1.1pt, rounded corners=4pt,
+    fill=iitlight, minimum height=1.95cm, text width=0.168\linewidth,
+    align=center, inner sep=4pt, font=\fontsize{12}{14}\selectfont},
+  hl/.style={st, fill=iitmaroon, text=white, line width=1.3pt},
+  badge/.style={
+    circle, fill=iitmaroon, draw=white, line width=1.1pt, text=white,
+    minimum size=0.76cm, inner sep=0pt,
+    font=\fontsize{11.5}{11.5}\selectfont\bfseries},
+  badgehl/.style={badge, fill=white, draw=iitmaroon, text=iitmaroon},
+  ar/.style={-{Stealth[length=3.2mm,width=2.5mm]}, line width=2pt,
+             iitmaroon, shorten >=2pt, shorten <=2pt}]
+
+  % ---------- nodes ----------
+  \node[st] (s1) {\vphantom{Ag}\textbf{\color{iitmaroon}Ingestion}\\[2pt]
+                  {\fontsize{11}{13}\selectfont 400c Chunks\\+ 50c Overlap}};
+  \node[st, right=of s1] (s2) {\vphantom{Ag}\textbf{\color{iitmaroon}Storage}\\[2pt]
+                  {\fontsize{11}{13}\selectfont ChromaDB\\+ Metadata}};
+  \node[hl, right=of s2] (s3) {\vphantom{Ag}\textbf{Guardrail}\\[2pt]
+                  {\fontsize{11}{13}\selectfont PII Redactor\\+ Luhn Check}};
+  \node[st, right=of s3] (s4) {\vphantom{Ag}\textbf{\color{iitmaroon}Supervision}\\[2pt]
+                  {\fontsize{11}{13}\selectfont Hierarchical\\Coordination}};
+  \node[st, right=of s4] (s5) {\vphantom{Ag}\textbf{\color{iitmaroon}Gateway}\\[2pt]
+                  {\fontsize{11}{13}\selectfont Egress Payload\\Filter}};
+
+  % ---------- soft shadows (behind nodes) ----------
+  \begin{scope}[on background layer]
+    \foreach \n in {s1,s2,s3,s4,s5}{
+      \fill[black!15, rounded corners=4pt]
+        ($(\n.south west)+(0.05,-0.06)$) rectangle ($(\n.north east)+(0.05,-0.06)$);
+    }
+    % privacy-boundary zone around stages 3-5
+    \node[draw=iitmaroon!70, dashed, dash pattern=on 5pt off 3pt, line width=1pt,
+          rounded corners=7pt, fill=iitmaroon!5,
+          fit=(s3)(s4)(s5), inner xsep=6pt, inner ysep=8pt] (zone) {};
+  \end{scope}
+  \node[anchor=south east, font=\fontsize{10}{11.5}\selectfont\itshape,
+        text=iitmaroon, inner sep=2pt]
+        at ($(zone.north east)+(-3pt,1pt)$) {privacy boundary};
+
+  % ---------- number badges ----------
+  \node[badge]   at (s1.north west) {1};
+  \node[badge]   at (s2.north west) {2};
+  \node[badgehl] at (s3.north west) {3};
+  \node[badge]   at (s4.north west) {4};
+  \node[badge]   at (s5.north west) {5};
+
+  % ---------- arrows ----------
+  \foreach \a/\b in {s1/s2, s2/s3, s3/s4, s4/s5}{
+    \draw[ar] (\a.east) -- (\b.west);
+  }
 \end{tikzpicture}
-\vspace{0.35em}
+\vspace{0.4em}
 \figcaption{End-to-end multi-agent pipeline enforcing privacy boundaries prior to LLM reasoning.}
 \end{minipage}%
 \hfill
@@ -203,7 +248,7 @@
 \forall c \in \mathcal{C} : \text{Analyst} \in \text{Path}(c) \Longrightarrow \text{idx}(\text{Redactor}) < \text{idx}(\text{Analyst})
 \]
 {\smallsize \texttt{ChunkFlowAuditor} verifies that every tracked chunk reaches the Analyst only after passing through the Redactor; violations trigger \texttt{UNGUARDED\_FLOW\_DETECTED}.\par}
-\vspace{0.2em}
+\vspace{0.15em}
 \subhead{Experimental Setup:} 48 live evaluations (45 functional + 3 pilot) across local SLMs (Gemma~2~2B, Llama~3.2~3B, Mistral~7B, Phi-3~3.8B) on a 4\,GiB VRAM RTX 3050 GPU.
 \end{minipage}
 \end{posterblock}
@@ -216,13 +261,13 @@
 \textbf{Solution:} Stage 3 PII Redactor applies Presidio NER + regex + Luhn checksum before LLM ingestion, replacing raw PII with surrogate tokens.\\
 \textbf{Outcome:} Pre-transmission exposure dropped to \textbf{0.00\%} in Configs B and C.
 
-\vspace{0.3em}
+\vspace{0.25em}
 \subhead{P2. Enforcing Redaction-Before-Analysis Ordering}\\
 \textbf{Problem:} Autonomous agents can bypass intermediate filters if execution paths drift.\\
 \textbf{Solution:} \texttt{ChunkFlowAuditor} records chunk transitions and enforces strict ordering.\\
 \textbf{Outcome:} Complete provenance verification across all tracked chunks.
 
-\vspace{0.3em}
+\vspace{0.25em}
 \subhead{P3. Restricting Uncontrolled Delegation Loops}\\
 \textbf{Problem:} Malicious prompts instruct coworker agents to spawn redundant sub-tasks.\\
 \textbf{Solution:} Supervisor enforces \texttt{allow\_delegation=False} and records SHA-256 state fingerprints for each transaction.\\
@@ -251,82 +296,118 @@
 \begin{keybox}
 Three Separate Measurements: 0\% Config B/C pre-transmission exposure, 0\% actual external transmission (egress gateway), and 100\% guardrail redaction rate.
 \end{keybox}
-\vspace{0.25em}
+\vspace{0.2em}
 
 \centering
 \IfFileExists{docs/figures/leakage_clean_presentation.png}{%
-  \includegraphics[width=0.98\linewidth]{docs/figures/leakage_clean_presentation.png}\\[0.2em]
+  \includegraphics[width=0.98\linewidth]{docs/figures/leakage_clean_presentation.png}\\[0.15em]
 }{%
-  \includegraphics[width=0.98\linewidth]{leakage_reduction_empirical.png}\\[0.2em]
+  \includegraphics[width=0.98\linewidth]{leakage_reduction_empirical.png}\\[0.15em]
 }
 \figcaption{Pre-transmission exposure across architectures (left) and attack classes (right).}
 
 \raggedright
-\vspace{0.25em}
+\vspace{0.2em}
 \textbf{Analysis:} Gemma~2 achieved highest benign utility (\textbf{93.3\%}, 22.9\,s) but was most susceptible in baseline Config~A (38.5\% micro / 40.0\% macro exposure). Adding hierarchical supervision and persistent storage (Config~C) raises latency to 175.7\,s, an acceptable trade-off for offline security.
 \end{posterblock}
 \end{minipage}%
 \hfill
 \begin{minipage}[t]{0.488\textwidth}\vspace{0pt}
 \begin{posterblock}[equal height group=rowB]{6}{Positioning vs Existing Work}
-\centering
-{\bodysize
-\renewcommand{\arraystretch}{1.2}
-\setlength{\tabcolsep}{7pt}
-\begin{tabular}{@{}lcccc@{}}
+
+\subhead{What existing technologies provide}
+
+\vspace{0.1em}
+{\fontsize{12}{15.5}\selectfont
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}p{0.20\linewidth}p{0.34\linewidth}p{0.41\linewidth}@{}}
   \toprule
-  \textbf{Capability / Safeguard} & \textbf{Presidio [4]} & \textbf{LlamaGuard [6]} & \textbf{LangGraph} & \textbf{Ours (Config C)} \\
+  \textbf{Technology} & \textbf{Primary role} & \textbf{Relevance to our work} \\
   \midrule
-  Multi-Agent Coordination       & \no  & \no  & \yes & \textbf{\yes} \\
-  Inline Workflow Redaction      & \yes & \no  & \no  & \textbf{\yes} \\
-  Chunk Provenance Auditing      & \no  & \no  & \no  & \textbf{\yes} \\
-  Application Egress Gateway     & \no  & \no  & \no  & \textbf{\yes} \\
-  Tested Pre-Transmission Rate   & N/A  & N/A  & N/A  & \textbf{0.00\%} \\
-  Actual External Transmission   & N/A  & N/A  & N/A  & \textbf{0.00\%} \\
+  Presidio [4] & PII recognition \& masking & Core baseline for entity detection \& redaction \\
+  LlamaGuard [6] & Model safety classification & Reference for standalone model-level screening \\
+  CrewAI & Agent orchestration & Process framework for multi-agent execution \\
+  AgentDojo [8] & Agent injection evaluation & Related evaluation directions in agent security \\
   \bottomrule
-\end{tabular}\par}
-\vspace{0.3em}
-{\smallsize\color{iitgray}\yes\ supported \quad \no\ not supported \quad N/A: not evaluated across agent workflows\par}
-\raggedright
-\vspace{0.4em}
-\textbf{Our contribution:} Existing guardrails target standalone single-turn LLMs. This project addresses the gap by integrating \textbf{chunk provenance tracking, inline redaction, and application-level egress inspection} across multi-agent workflows.
+\end{tabular}\par
+}
+
+\vspace{0.2em}
+\subhead{Integration gap addressed by our work}
+Existing tools protect standalone prompts or manage tasks, but do not track sensitive chunk flow across multi-agent handoffs or prevent unmonitored tool exfiltration.
+
+\vspace{0.15em}
+\subhead{Our contribution: Integrated workflow protection}
+\begin{itemize}
+  \setlength{\itemsep}{0.08em}
+  \item \textbf{Inline PII Redaction:} Presidio + Regex + Luhn check masks PII into surrogate tokens before downstream LLM ingestion.
+  \item \textbf{Provenance Auditing:} \texttt{ChunkFlowAuditor} enforces that chunks pass through the Redactor before the Analyst.
+  \item \textbf{Egress Inspection:} Application-level gateway blocks outbound requests containing source PII digests.
+  \item \textbf{Adversarial Evaluation:} 48 empirical runs comparing 3 configurations across 5 threat classes and 4 domains.
+\end{itemize}
+
+\vspace{0.15em}
+\begin{keybox}
+Focus: Integrating and evaluating layered privacy safeguards across collaborative agent workflows, not creating a standalone detector.
+\end{keybox}
+
+{\fontsize{11}{13.5}\selectfont\color{iitgray}
+*Feature-level architectural positioning, not a head-to-head empirical comparison against listed tools.
+\par}
+
 \end{posterblock}
 \end{minipage}
 
 % ======================== 7 + CONCLUSION ========================
 \begin{minipage}[t]{0.488\textwidth}\vspace{0pt}
 \begin{posterblock}[equal height group=rowC]{7}{Key Learnings}
+{\fontsize{18}{26.5}\selectfont
 \begin{itemize}
-  \item \textbf{Technical:} Engineering multi-agent pipelines with CrewAI, Presidio NER, ChromaDB vector indexing, and SHA-256 intermediate state hashing.
-  \item \textbf{Research Methodology:} Rigorously separating \textit{pre-transmission exposure} from \textit{actual external transmission} to ensure defensive claims accurately reflect component behaviour.
-  \item \textbf{Experimental Rigour:} Formulating automated evaluation harnesses (48 live runs) under strict local GPU constraints (4\,GiB VRAM) with 74 passing regression tests.
-\end{itemize}
+  \setlength{\itemsep}{0.35em}\setlength{\parskip}{0.12em}
+  \item \textbf{Technical Implementation:} Engineered modular multi-agent pipelines integrating CrewAI orchestration, Microsoft Presidio NER, ChromaDB vector indexing, and SHA-256 intermediate state fingerprinting.
+
+  \item \textbf{Workflow-Level Security:} Learned that protecting single LLM boundaries is insufficient; privacy checks must govern chunk flows across retrieval, coworker agents, and external tool sinks.
+
+  \item \textbf{Research Methodology:} Distinguished \textit{pre-transmission exposure} from \textit{actual external transmission}, ensuring claims accurately reflect individual safeguards rather than conflating gateway blocking with model alignment.
+
+  \item \textbf{Experimental Rigour:} Developed an automated evaluation harness across 48 live runs, 5 threat classes, 4 domains, and 74 passing tests under 4\,GiB VRAM GPU constraints.
+
+  \item \textbf{System Trade-offs:} Quantified real-world balances between privacy assurance, benign task utility, detection coverage, and execution latency overheads.
+\end{itemize}\par}
 \end{posterblock}
 \end{minipage}%
 \hfill
 \begin{minipage}[t]{0.488\textwidth}\vspace{0pt}
-\begin{posterblock}[equal height group=rowC]{}{Conclusion and Future Work}
+\begin{posterblock}[equal height group=rowC]{8}{Conclusion and Future Work}
+{\fontsize{18}{26.5}\selectfont
 \begin{itemize}
-  \item \textbf{Conclusion:} Layered defences removed pre-transmission PII exposure in the evaluated cases without sacrificing benign task success. Findings support defensive layering within tested model classes.
-  \item \textbf{Future Work:} Head-to-head benchmarking on public corpora (AgentDojo, InjecAgent), multilingual detection for Indian languages, and formal policy verification.
-\end{itemize}
-\vspace{0.2em}
-{\smallsize
+  \setlength{\itemsep}{0.35em}\setlength{\parskip}{0.12em}
+  \item \textbf{Conclusion:} The integrated pipeline eliminated measured pre-transmission PII exposure in protected runs, proving the efficacy of combining inline redaction, provenance auditing, and egress gateways.
+
+  \item \textbf{Practical Significance:} Technical safeguards operationalize \textbf{DEPA} principles (\textit{Data Blindness}, \textit{Purpose Limitation}) and address compliance needs under India's \textbf{Digital Personal Data Protection Act, 2023}.
+
+  \item \textbf{Limitations:} Evaluation relies on a synthetic corpus and quantized local SLMs; detection coverage is bounded by configured recognizer patterns and exact-match egress filters.
+
+  \item \textbf{Future Work:} Benchmark against public agent suites (AgentDojo, InjecAgent), expand multilingual Indian PII detection, and verify formal workflow policies.
+\end{itemize}\par}
+
+\vspace{0.6em}
+{\fontsize{15}{19.5}\selectfont
 \subhead{References:}
-[1] OWASP LLM01 (2023).\quad [2] Perez et al., arXiv:2211.09527 (2022).\quad [3] Greshake et al., ACM AISec (2023).\quad [4] Microsoft Presidio (2023).\quad [6] Inan et al., Llama Guard (2023).\par
-\vspace{0.1em}
-\subhead{Acknowledgements:} Guidance of \textbf{Dr. Srinivas Padmanabhuni}, Department of CSE, IIT Tirupati.\par}
+[1] OWASP LLM01 (2023).\quad [2] Perez et al., arXiv:2211.09527.\quad [3] Greshake et al., ACM AISec (2023).\quad [4] Microsoft Presidio (2023).\quad [6] Inan et al., Llama Guard (2023).\quad [8] Debenedetti et al., AgentDojo, arXiv (2024). \par
+\vspace{0.35em}
+\subhead{Acknowledgements:} Guidance of \textbf{Dr. Srinivas Padmanabhuni}, Dept.\ of CSE, IIT Tirupati.\par}
 \end{posterblock}
 \end{minipage}
-
 % ======================== FOOTER ========================
 \vfill
 \begin{tcolorbox}[enhanced, colback=iitmaroon, colframe=iitmaroon, arc=0pt,
-  boxrule=0pt, left=14pt, right=14pt, top=6pt, bottom=6pt,
+  boxrule=0pt, left=14pt, right=14pt, top=5pt, bottom=5pt,
   fontupper=\affilsize\color{white}]
-\textbf{B.Tech Project (BTP) Poster Presentation} \hfill
-GitHub: \texttt{github.com/nithishgouds/BTP\_Red\_Teaming\_CrewAI\_hierarchical} \hfill
-IIT Tirupati
+\textbf{B.Tech Project (BTP) Poster Presentation 2026} \hfill
+\hfill
+Indian Institute of Technology Tirupati
 \end{tcolorbox}
 
 \end{document}
